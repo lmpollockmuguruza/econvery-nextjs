@@ -1115,26 +1115,32 @@ export class RelevanceScorer {
 
   constructor(profile: UserProfile) {
     this.profile = profile;
+    
+    // Ensure arrays exist
+    if (!this.profile.interests) this.profile.interests = [];
+    if (!this.profile.methods) this.profile.methods = [];
+    if (!this.profile.selected_adjacent_fields) this.profile.selected_adjacent_fields = [];
+    
     this.isGeneralist = 
-      isGeneralistField(profile.primary_field) || 
-      isGeneralistLevel(profile.academic_level) ||
+      isGeneralistField(profile.primary_field || "") || 
+      isGeneralistLevel(profile.academic_level || "") ||
       profile.experience_type === "generalist" ||
       profile.experience_type === "explorer";
-    this.hasInterests = profile.interests.length > 0;
-    this.hasMethods = profile.methods.length > 0;
+    this.hasInterests = this.profile.interests.length > 0;
+    this.hasMethods = this.profile.methods.length > 0;
 
     // Build concept targets
     this.targetConcepts = new Set<string>();
     
     // Add field concepts (unless generalist)
-    if (!this.isGeneralist && FIELD_TO_CONCEPTS[profile.primary_field]) {
+    if (!this.isGeneralist && profile.primary_field && FIELD_TO_CONCEPTS[profile.primary_field]) {
       for (const c of FIELD_TO_CONCEPTS[profile.primary_field]) {
         this.targetConcepts.add(normalizeText(c));
       }
     }
     
     // Add interest concepts
-    for (const interest of profile.interests) {
+    for (const interest of this.profile.interests) {
       if (INTEREST_TO_CONCEPTS[interest]) {
         for (const c of INTEREST_TO_CONCEPTS[interest]) {
           this.targetConcepts.add(normalizeText(c));
@@ -1311,8 +1317,8 @@ export class RelevanceScorer {
   }
 
   private scoreApproachAlignment(text: string): number {
-    const pref = this.profile.approach_preference;
-    if (pref === "no_preference" || pref === "both") return 0.5;
+    const pref = this.profile.approach_preference || "no_preference";
+    if (pref === "no_preference" || pref === "both" || !pref) return 0.5;
     
     const detected = this.detectApproach(text);
     if (detected === "unknown") return 0.5;
@@ -1332,8 +1338,8 @@ export class RelevanceScorer {
     const isAdjacent = isAdjacentField(journalField);
     
     // If user explicitly included adjacent fields, no penalty
-    if (this.profile.include_adjacent_fields && 
-        this.profile.selected_adjacent_fields.includes(journalField)) {
+    const selectedAdjacent = this.profile.selected_adjacent_fields || [];
+    if (this.profile.include_adjacent_fields && selectedAdjacent.includes(journalField)) {
       return [0.95, true]; // Small adjustment, marked as adjacent
     }
     

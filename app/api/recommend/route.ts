@@ -30,11 +30,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!profile.name || !profile.interests?.length || !profile.methods?.length) {
+    if (!profile.name) {
       return NextResponse.json(
-        { error: "Profile must include name, interests, and methods" },
+        { error: "Profile must include name" },
         { status: 400 }
       );
+    }
+    
+    // Ensure interests and methods are arrays (can be empty)
+    if (!Array.isArray(profile.interests)) {
+      profile.interests = [];
+    }
+    if (!Array.isArray(profile.methods)) {
+      profile.methods = [];
     }
 
     // Process papers with scoring engine
