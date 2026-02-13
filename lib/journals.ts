@@ -31,10 +31,10 @@ export const WORKING_PAPERS: Record<string, Journal> = {
       "NBER",
     ],
   },
-  // CEPR Discussion Papers
+  // CEPR Discussion Papers (ISSN-L: 0265-8003, Online: 2045-6573)
   "CEPR Discussion Papers": {
     name: "CEPR Discussion Papers",
-    issn: "0800-2785",
+    issn: "0265-8003",
     field: "working_papers",
     tier: 1,
     altNames: [
@@ -42,6 +42,9 @@ export const WORKING_PAPERS: Record<string, Journal> = {
       "CEPR Discussion Paper",
       "CEPR DP",
       "CEPR",
+      "Discussion Paper Series",
+      "Discussion paper series",
+      "CEPR Discussion Paper Series",
     ],
   },
 };
