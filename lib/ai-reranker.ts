@@ -51,9 +51,17 @@ export interface AIRerankerResult {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL = "gemini-2.5-flash";
 const MAX_PAPERS_PER_BATCH = 10;
 const BLEND_WEIGHT = 0.45; // AI gets 45% weight, original gets 55%
+
+// Models available on Gemini free tier (ordered by likelihood of having quota)
+export const GEMINI_MODELS = [
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash (recommended)" },
+  { id: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash-Lite" },
+  { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+  { id: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+] as const;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PROMPT BUILDER
@@ -341,9 +349,10 @@ export async function aiRerank(
 /**
  * Validate a Gemini API key by making a minimal test request.
  */
-export async function validateGeminiKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+export async function validateGeminiKey(apiKey: string, model?: string): Promise<{ valid: boolean; error?: string }> {
   try {
-    const url = `${GEMINI_API_URL}/${DEFAULT_MODEL}:generateContent?key=${apiKey}`;
+    const useModel = model || DEFAULT_MODEL;
+    const url = `${GEMINI_API_URL}/${useModel}:generateContent?key=${apiKey}`;
     
     const response = await fetch(url, {
       method: "POST",
