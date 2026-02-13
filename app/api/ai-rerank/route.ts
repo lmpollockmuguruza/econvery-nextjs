@@ -8,6 +8,7 @@ export const maxDuration = 60;
 interface AIRerankRequestBody {
   action: "rerank" | "validate";
   apiKey: string;
+  model?: string;
   profile?: UserProfile;
   papers?: ScoredPaper[];
 }
@@ -15,7 +16,7 @@ interface AIRerankRequestBody {
 export async function POST(request: NextRequest) {
   try {
     const body: AIRerankRequestBody = await request.json();
-    const { action, apiKey } = body;
+    const { action, apiKey, model } = body;
 
     if (!apiKey) {
       return NextResponse.json(
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     // Validate key
     if (action === "validate") {
-      const result = await validateGeminiKey(apiKey);
+      const result = await validateGeminiKey(apiKey, model);
       return NextResponse.json(result);
     }
 
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const result = await aiRerank(papers, profile, { apiKey });
+      const result = await aiRerank(papers, profile, { apiKey, model });
 
       return NextResponse.json({
         papers: result.papers,
