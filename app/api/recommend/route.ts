@@ -44,6 +44,9 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(profile.methods)) {
       profile.methods = [];
     }
+    if (profile.exploration_level === undefined) {
+      profile.exploration_level = 0.5;
+    }
 
     // Process papers with scoring engine
     const result = processPapers(profile, papers);
