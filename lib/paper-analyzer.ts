@@ -248,14 +248,35 @@ function detectTopicsFromConcepts(concepts: { name: string; score: number }[]): 
   for (const concept of concepts) {
     const conceptName = normalizeText(concept.name);
     
+    // Skip very short concept names that cause false substring matches
+    if (conceptName.length < 4) continue;
+    
     for (const [topicId, node] of Object.entries(TOPIC_TAXONOMY)) {
       // Check if this OpenAlex concept matches any of our topic signals
-      const matchesStrong = node.strongSignals.some(s => 
-        conceptName.includes(normalizeText(s)) || normalizeText(s).includes(conceptName)
-      );
-      const matchesModerate = node.moderateSignals.some(s => 
-        conceptName.includes(normalizeText(s)) || normalizeText(s).includes(conceptName)
-      );
+      // Only check if concept name CONTAINS a signal term (not reverse)
+      // This prevents "press" (printing press) matching media's "press" signal
+      const matchesStrong = node.strongSignals.some(s => {
+        const normalizedSignal = normalizeText(s);
+        // For multi-word signals, check if concept contains the signal
+        if (normalizedSignal.includes(" ")) {
+          return conceptName.includes(normalizedSignal);
+        }
+        // For single-word signals, require exact match or the concept containing the signal as a whole word
+        return conceptName === normalizedSignal || 
+          conceptName.startsWith(normalizedSignal + " ") ||
+          conceptName.endsWith(" " + normalizedSignal) ||
+          conceptName.includes(" " + normalizedSignal + " ");
+      });
+      const matchesModerate = node.moderateSignals.some(s => {
+        const normalizedSignal = normalizeText(s);
+        if (normalizedSignal.includes(" ")) {
+          return conceptName.includes(normalizedSignal);
+        }
+        return conceptName === normalizedSignal ||
+          conceptName.startsWith(normalizedSignal + " ") ||
+          conceptName.endsWith(" " + normalizedSignal) ||
+          conceptName.includes(" " + normalizedSignal + " ");
+      });
       
       if (matchesStrong || matchesModerate) {
         const existing = detections.get(topicId);
@@ -330,6 +351,37 @@ function combineTopicDetections(
     // Keep if parent not detected with high confidence
     return !topicIds.has(node.parent);
   });
+  
+  // SUPPRESSION: If there are 2+ high-confidence topics, suppress low-confidence
+  // topics that aren't related/adjacent to any high-confidence topic.
+  // This prevents spurious weak matches from surfacing when the paper's real
+  // identity is clear (e.g., "vote" triggering elections on a taxation paper).
+  const highConfTopics = filtered.filter(t => t.confidence === "high");
+  if (highConfTopics.length >= 2) {
+    const highConfIds = new Set(highConfTopics.map(t => t.id));
+    // Build the neighborhood of all high-confidence topics
+    const highConfNeighborhood = new Set<string>();
+    for (const t of highConfTopics) {
+      highConfNeighborhood.add(t.id);
+      const node = TOPIC_TAXONOMY[t.id];
+      if (node) {
+        node.related.forEach(r => highConfNeighborhood.add(r));
+        node.adjacent.forEach(a => highConfNeighborhood.add(a));
+      }
+    }
+    // Suppress low/medium confidence topics not in the neighborhood
+    return filtered.filter(topic => {
+      if (topic.confidence === "high") return true;
+      // Keep medium confidence if it's at least adjacent to a high-conf topic
+      if (topic.confidence === "medium") return highConfNeighborhood.has(topic.id);
+      // Drop low confidence unless it's directly related
+      return highConfIds.has(topic.id) || 
+        highConfTopics.some(ht => {
+          const node = TOPIC_TAXONOMY[ht.id];
+          return node && node.related.includes(topic.id);
+        });
+    });
+  }
   
   return filtered;
 }
