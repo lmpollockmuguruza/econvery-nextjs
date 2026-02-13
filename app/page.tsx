@@ -11,7 +11,12 @@ import {
   BookOpen,
   FlaskConical,
   Lightbulb,
-  Globe
+  Globe,
+  Brain,
+  Key,
+  CheckCircle,
+  AlertCircle,
+  ExternalLink
 } from "lucide-react";
 import { ProgressDots, PaperCard, Loading, FunLoading, MultiSelect } from "@/components";
 import { 
@@ -62,6 +67,15 @@ interface AppState {
   summary: string;
   isLoading: boolean;
   error: string | null;
+  // AI enhancement
+  geminiApiKey: string;
+  aiEnabled: boolean;
+  aiKeyValid: boolean | null; // null = not yet validated
+  aiKeyValidating: boolean;
+  aiReranking: boolean;
+  aiEnhanced: boolean;
+  aiPapersScored: number;
+  aiError: string | null;
 }
 
 const initialState: AppState = {
@@ -74,7 +88,7 @@ const initialState: AppState = {
   methods: [],
   region: "Global / No Preference",
   fieldType: "Both",
-  includeWorkingPapers: true,  // Include NBER/CEPR by default
+  includeWorkingPapers: true,
   includeAdjacentFields: false,
   selectedAdjacentFields: [],
   journals: [],
@@ -83,6 +97,15 @@ const initialState: AppState = {
   summary: "",
   isLoading: false,
   error: null,
+  // AI enhancement
+  geminiApiKey: "",
+  aiEnabled: false,
+  aiKeyValid: null,
+  aiKeyValidating: false,
+  aiReranking: false,
+  aiEnhanced: false,
+  aiPapersScored: 0,
+  aiError: null,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -109,7 +132,12 @@ export default function Home() {
 
   // Save state to localStorage
   useEffect(() => {
-    const toSave = { ...state, papers: [], summary: "", isLoading: false, error: null };
+    const toSave = { 
+      ...state, 
+      papers: [], summary: "", isLoading: false, error: null,
+      aiReranking: false, aiEnhanced: false, aiPapersScored: 0, aiError: null,
+      aiKeyValidating: false,
+    };
     localStorage.setItem("econvery-state", JSON.stringify(toSave));
   }, [state]);
 
@@ -135,7 +163,7 @@ export default function Home() {
   }, []);
 
   const discoverPapers = useCallback(async () => {
-    updateState({ isLoading: true, error: null });
+    updateState({ isLoading: true, error: null, aiEnhanced: false, aiError: null, aiPapersScored: 0 });
 
     try {
       // Build profile for API
@@ -179,7 +207,7 @@ export default function Home() {
         return;
       }
 
-      // Score papers
+      // Score papers (taxonomy-based)
       const recommendRes = await fetch("/api/recommend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -191,15 +219,57 @@ export default function Home() {
       }
 
       const recommendData = await recommendRes.json();
+      let finalPapers = recommendData.papers;
+      let aiEnhanced = false;
+      let aiPapersScored = 0;
+      let aiError: string | null = null;
+
+      // AI Reranking step (if enabled and key is valid)
+      if (state.aiEnabled && state.geminiApiKey && state.aiKeyValid) {
+        updateState({ aiReranking: true });
+        
+        try {
+          const aiRes = await fetch("/api/ai-rerank", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "rerank",
+              apiKey: state.geminiApiKey,
+              profile,
+              papers: recommendData.papers,
+            }),
+          });
+
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            if (aiData.aiEnhanced) {
+              finalPapers = aiData.papers;
+              aiEnhanced = true;
+              aiPapersScored = aiData.aiPapersScored || 0;
+            }
+            if (aiData.error) {
+              aiError = aiData.error;
+            }
+          }
+        } catch (err) {
+          aiError = err instanceof Error ? err.message : "AI reranking failed";
+          console.warn("AI reranking failed:", err);
+        }
+      }
 
       updateState({
-        papers: recommendData.papers,
+        papers: finalPapers,
         summary: recommendData.summary,
         isLoading: false,
+        aiReranking: false,
+        aiEnhanced,
+        aiPapersScored,
+        aiError,
       });
     } catch (err) {
       updateState({
         isLoading: false,
+        aiReranking: false,
         error: err instanceof Error ? err.message : "Something went wrong",
       });
     }
@@ -793,6 +863,108 @@ function StepSources({ state, updateState, nextStep, prevStep, discoverPapers }:
         </div>
       </div>
 
+      {/* AI Enhancement Section */}
+      <div className="mt-6">
+        <button
+          onClick={() => updateState({ aiEnabled: !state.aiEnabled })}
+          className={`w-full flex items-center gap-3 rounded-lg border-2 p-3 cursor-pointer transition-colors ${
+            state.aiEnabled 
+              ? "border-purple-300 bg-purple-50 hover:border-purple-400" 
+              : "border-paper-200 bg-white hover:border-paper-300"
+          }`}
+        >
+          <Brain className={`h-5 w-5 ${state.aiEnabled ? "text-purple-600" : "text-paper-400"}`} />
+          <div className="flex-1 text-left">
+            <span className={`font-medium ${state.aiEnabled ? "text-purple-900" : "text-paper-700"}`}>
+              AI-Enhanced Recommendations
+            </span>
+            <span className="ml-2 text-xs text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">
+              Free
+            </span>
+          </div>
+          <div className={`h-5 w-9 rounded-full transition-colors ${state.aiEnabled ? "bg-purple-500" : "bg-paper-300"}`}>
+            <div className={`h-4 w-4 mt-0.5 rounded-full bg-white transition-transform ${state.aiEnabled ? "translate-x-4 ml-0.5" : "translate-x-0.5"}`} />
+          </div>
+        </button>
+        
+        {state.aiEnabled && (
+          <div className="mt-3 rounded-lg border border-purple-200 bg-purple-50/50 p-4 space-y-3">
+            <p className="text-sm text-purple-800">
+              Uses Google Gemini AI to understand semantic connections between papers and your interests, 
+              catching nuances that keyword matching misses.
+            </p>
+            
+            <div>
+              <label className="text-xs font-medium text-purple-700 flex items-center gap-1.5">
+                <Key className="h-3.5 w-3.5" />
+                Gemini API Key
+              </label>
+              <div className="mt-1 flex gap-2">
+                <input
+                  type="password"
+                  value={state.geminiApiKey}
+                  onChange={(e) => updateState({ 
+                    geminiApiKey: e.target.value, 
+                    aiKeyValid: null,
+                    aiError: null 
+                  })}
+                  placeholder="Paste your API key here"
+                  className="flex-1 text-sm rounded-lg border border-purple-200 px-3 py-2 bg-white focus:border-purple-400 focus:ring-purple-400"
+                />
+                <button
+                  onClick={async () => {
+                    if (!state.geminiApiKey.trim()) return;
+                    updateState({ aiKeyValidating: true, aiKeyValid: null });
+                    try {
+                      const res = await fetch("/api/ai-rerank", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "validate", apiKey: state.geminiApiKey }),
+                      });
+                      const data = await res.json();
+                      updateState({ 
+                        aiKeyValid: data.valid, 
+                        aiKeyValidating: false,
+                        aiError: data.valid ? null : data.error 
+                      });
+                    } catch {
+                      updateState({ aiKeyValid: false, aiKeyValidating: false, aiError: "Connection failed" });
+                    }
+                  }}
+                  disabled={!state.geminiApiKey.trim() || state.aiKeyValidating}
+                  className="rounded-lg bg-purple-600 px-3 py-2 text-sm text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  {state.aiKeyValidating ? "..." : "Test"}
+                </button>
+              </div>
+              
+              {state.aiKeyValid === true && (
+                <p className="mt-1.5 text-xs text-green-700 flex items-center gap-1">
+                  <CheckCircle className="h-3.5 w-3.5" /> Key is valid — AI enhancement is active
+                </p>
+              )}
+              {state.aiKeyValid === false && (
+                <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" /> {state.aiError || "Invalid key"}
+                </p>
+              )}
+            </div>
+            
+            <div className="rounded-lg bg-white/70 p-3 text-xs text-purple-700 space-y-1.5">
+              <p className="font-medium">How to get a free API key (takes 1 minute):</p>
+              <ol className="list-decimal list-inside space-y-1 text-purple-600">
+                <li>Go to <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-800 inline-flex items-center gap-0.5">Google AI Studio <ExternalLink className="h-3 w-3" /></a></li>
+                <li>Sign in with any Google account</li>
+                <li>Click <strong>&quot;Get API key&quot;</strong> in the left sidebar</li>
+                <li>Click <strong>&quot;Create API key&quot;</strong> → select or create a project</li>
+                <li>Copy and paste the key above</li>
+              </ol>
+              <p className="text-purple-500 mt-1">No credit card required. Free tier: ~1,500 requests/day.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Journal Count Summary */}
       <div className="mt-4 rounded-lg bg-paper-100 p-3 text-sm text-paper-600">
         <Search className="mr-2 inline h-4 w-4" />
@@ -802,6 +974,9 @@ function StepSources({ state, updateState, nextStep, prevStep, discoverPapers }:
         )}
         {state.selectedAdjacentFields.length > 0 && (
           <span> + {state.selectedAdjacentFields.length} related fields</span>
+        )}
+        {state.aiEnabled && state.aiKeyValid && (
+          <span className="text-purple-600"> + AI reranking</span>
         )}
       </div>
 
@@ -835,6 +1010,12 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
     return (
       <div className="animate-fade-in">
         <FunLoading userName={state.name} />
+        {state.aiReranking && (
+          <p className="mt-4 text-center text-sm text-purple-600 flex items-center justify-center gap-2">
+            <Brain className="h-4 w-4 animate-pulse" />
+            AI is analyzing paper relevance...
+          </p>
+        )}
       </div>
     );
   }
@@ -893,6 +1074,24 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
         For you, {state.name}
       </h1>
       <p className="mt-2 text-center text-paper-500">{state.summary}</p>
+
+      {/* AI Enhancement Badge */}
+      {state.aiEnhanced && (
+        <div className="mt-3 mx-auto flex items-center justify-center gap-2 rounded-full bg-purple-50 border border-purple-200 px-4 py-1.5 w-fit">
+          <Brain className="h-4 w-4 text-purple-600" />
+          <span className="text-xs font-medium text-purple-700">
+            AI-enhanced · {state.aiPapersScored} papers re-ranked by Gemini
+          </span>
+        </div>
+      )}
+      {state.aiError && !state.aiEnhanced && state.aiEnabled && (
+        <div className="mt-3 mx-auto flex items-center justify-center gap-2 rounded-full bg-amber-50 border border-amber-200 px-4 py-1.5 w-fit">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <span className="text-xs text-amber-700">
+            AI enhancement unavailable: {state.aiError}
+          </span>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="mt-6 grid grid-cols-2 gap-4">
