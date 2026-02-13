@@ -185,8 +185,16 @@ export function processPaper(work: OpenAlexWork): Paper | null {
 
   // Journal info - use findJournalByName to handle alternate names
   const journal = findJournalByName(journalName);
-  const journalTier = journal?.tier || 4;
-  const journalField = journal?.field;
+  
+  // GATE: Only include papers from our curated journal list
+  // Papers from unknown journals (tier 4) are noise — they got into results
+  // via broad OpenAlex queries but aren't from journals we track
+  if (!journal) {
+    return null;
+  }
+  
+  const journalTier = journal.tier;
+  const journalField = journal.field;
 
   return {
     id: (work.id || "").replace("https://openalex.org/", ""),
