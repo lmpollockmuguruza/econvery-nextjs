@@ -33,6 +33,10 @@ const CONFIG = {
   NBER_INSTITUTION_ID: "I1286949407", // National Bureau of Economic Research
   CEPR_INSTITUTION_ID: "I205783295",  // Centre for Economic Policy Research (approximate)
   
+  // CEPR ISSNs for direct OpenAlex source lookup
+  CEPR_ISSN: "0265-8003",
+  CEPR_ISSN_ONLINE: "2045-6573",
+  
   // Timeouts and limits
   TIMEOUT: 15000,
   MAX_PAPERS: 50,
@@ -239,51 +243,76 @@ export async function fetchWorkingPapersFromOpenAlex(
   
   // Strategy 1: Try to find NBER source ID dynamically
   const nberSourceId = await findOpenAlexSourceId("NBER");
-  const ceprSourceId = await findOpenAlexSourceId("CEPR");
   
-  // Strategy 2: Search by institution affiliation for working papers
-  // OpenAlex indexes NBER papers with NBER as an affiliated institution
-  const filters: string[] = [];
+  // Build a list of filters to try, each targeting different paper sources
+  const filters: { filter: string; label: string }[] = [];
   
+  // NBER source-based filter
   if (nberSourceId) {
-    filters.push(`primary_location.source.id:${nberSourceId}`);
+    filters.push({
+      filter: `primary_location.source.id:${nberSourceId}`,
+      label: "NBER source"
+    });
   }
+  
+  // CEPR via ISSN (most reliable for CEPR) — try both print and online ISSNs
+  filters.push({
+    filter: `primary_location.source.issn:${CONFIG.CEPR_ISSN}|${CONFIG.CEPR_ISSN_ONLINE}`,
+    label: "CEPR ISSN"
+  });
+  
+  // CEPR source name search fallback
+  const ceprSourceId = await findOpenAlexSourceId("CEPR Discussion");
   if (ceprSourceId) {
-    filters.push(`primary_location.source.id:${ceprSourceId}`);
+    filters.push({
+      filter: `primary_location.source.id:${ceprSourceId}`,
+      label: "CEPR source"
+    });
   }
+
+  // Fallback: Search by institution affiliation for NBER
+  filters.push({
+    filter: `authorships.institutions.id:${CONFIG.NBER_INSTITUTION_ID}`,
+    label: "NBER institution"
+  });
   
-  // Fallback: Search by institution affiliation
-  // This catches papers where authors are affiliated with NBER
-  filters.push(`authorships.institutions.id:${CONFIG.NBER_INSTITUTION_ID}`);
+  // Fallback: Search by institution affiliation for CEPR
+  filters.push({
+    filter: `authorships.institutions.id:${CONFIG.CEPR_INSTITUTION_ID}`,
+    label: "CEPR institution"
+  });
   
-  // Also try searching for "working paper" type documents from economics domain
-  // filter by type:article and has certain economics concepts
-  
-  for (const filter of filters) {
+  for (const { filter, label } of filters) {
     if (papers.length >= maxResults) break;
     
     try {
       const params = new URLSearchParams({
-        filter: `${filter},from_publication_date:${fromDate},to_publication_date:${toDate},type:article`,
+        filter: `${filter},from_publication_date:${fromDate},to_publication_date:${toDate}`,
         per_page: String(Math.min(50, maxResults - papers.length)),
         select: "id,doi,title,authorships,publication_date,primary_location,abstract_inverted_index,concepts,cited_by_count,open_access",
         mailto: CONFIG.OPENALEX_EMAIL,
       });
       
       const response = await fetch(`${CONFIG.OPENALEX_WORKS_URL}?${params}`);
-      if (!response.ok) continue;
+      if (!response.ok) {
+        console.warn(`OpenAlex query failed for ${label}: ${response.status}`);
+        continue;
+      }
       
       const data = await response.json();
       const works = data.results || [];
       
+      let addedFromFilter = 0;
       for (const work of works) {
         const paper = processOpenAlexWork(work);
-        if (paper && !papers.find(p => p.id === paper.id)) {
+        if (paper && !papers.find(p => p.id === paper.id || p.title.toLowerCase() === paper.title.toLowerCase())) {
           papers.push(paper);
+          addedFromFilter++;
         }
       }
+      console.log(`Got ${addedFromFilter} papers from ${label} (total so far: ${papers.length})`);
     } catch (error) {
-      console.warn(`OpenAlex query failed for filter ${filter}:`, error);
+      console.warn(`OpenAlex query failed for ${label}:`, error);
     }
   }
   
@@ -324,12 +353,18 @@ function processOpenAlexWork(work: any): Paper | null {
   const journalName = source.display_name || "Working Paper";
   
   // Determine if this is NBER/CEPR
+  const sourceIssns = (work.primary_location?.source?.issn || []).map((i: string) => i.toLowerCase());
+  
   const isNBER = journalName.toLowerCase().includes("nber") || 
     journalName.toLowerCase().includes("national bureau") ||
     institutions.some(i => i.toLowerCase().includes("nber") || i.toLowerCase().includes("national bureau"));
   
   const isCEPR = journalName.toLowerCase().includes("cepr") ||
-    journalName.toLowerCase().includes("centre for economic policy");
+    journalName.toLowerCase().includes("centre for economic policy") ||
+    journalName.toLowerCase().includes("discussion paper series") ||
+    sourceIssns.includes("0265-8003") ||
+    sourceIssns.includes("2045-6573") ||
+    institutions.some(i => i.toLowerCase().includes("cepr") || i.toLowerCase().includes("centre for economic policy research"));
   
   // Concepts
   const concepts = (work.concepts || [])
