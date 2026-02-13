@@ -1712,22 +1712,173 @@ export function getTopicNeighborhood(topicId: string, depth: number = 1): {
   // Remove direct from adjacent
   direct.forEach(d => adjacent.delete(d));
   
-  // If depth > 1, add related topics' related topics
-  if (depth > 1) {
+  // Depth 2+: add related topics' related topics to adjacent
+  if (depth >= 2) {
     node.related.forEach(relatedId => {
       const relatedNode = TOPIC_TAXONOMY[relatedId];
       if (relatedNode) {
         relatedNode.related.forEach(r => {
           if (!direct.has(r)) adjacent.add(r);
         });
+        // Also add related nodes' adjacent
+        relatedNode.adjacent.forEach(a => {
+          if (!direct.has(a)) adjacent.add(a);
+        });
       }
     });
+  }
+  
+  // Depth 3: go one more hop — adjacent topics' related topics
+  if (depth >= 3) {
+    const currentAdjacent = Array.from(adjacent);
+    for (const adjId of currentAdjacent) {
+      const adjNode = TOPIC_TAXONOMY[adjId];
+      if (adjNode) {
+        adjNode.related.forEach(r => {
+          if (!direct.has(r) && !adjacent.has(r)) adjacent.add(r);
+        });
+      }
+    }
   }
   
   return {
     direct: Array.from(direct),
     adjacent: Array.from(adjacent)
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIELD AFFINITY MAP
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Encodes intellectual proximity between fields.
+ * Values 0-1: 1.0 = same field, 0.0 = unrelated.
+ * Used in discovery scoring to boost papers from adjacent fields.
+ */
+export const FIELD_AFFINITY: Record<string, Record<string, number>> = {
+  "Development Economics": {
+    "Labor Economics": 0.7, "Public Economics": 0.7, "Health Economics": 0.65,
+    "Microeconomics": 0.5, "International Economics": 0.6, "Environmental Economics": 0.55,
+    "Agricultural Economics": 0.7, "Urban Economics": 0.5, "Behavioral Economics": 0.45,
+    "Economic History": 0.5, "Political Economy": 0.75, "Comparative Politics": 0.6,
+    "Public Policy": 0.65, "Demography": 0.55, "Sociology": 0.45,
+  },
+  "Labor Economics": {
+    "Public Economics": 0.7, "Development Economics": 0.7, "Health Economics": 0.6,
+    "Microeconomics": 0.6, "Behavioral Economics": 0.55, "Urban Economics": 0.6,
+    "Industrial Organization": 0.5, "Economic History": 0.45, "Demography": 0.6,
+    "Sociology": 0.5, "Public Policy": 0.6, "Law and Economics": 0.45,
+    "Management / Organization Studies": 0.5, "Econometrics": 0.4,
+  },
+  "Public Economics": {
+    "Labor Economics": 0.7, "Development Economics": 0.7, "Health Economics": 0.65,
+    "Microeconomics": 0.6, "Macroeconomics": 0.55, "Urban Economics": 0.55,
+    "Environmental Economics": 0.55, "Political Economy": 0.7, "Public Policy": 0.75,
+    "Law and Economics": 0.6, "Public Administration": 0.6, "Behavioral Economics": 0.5,
+  },
+  "Macroeconomics": {
+    "Financial Economics": 0.65, "International Economics": 0.7, "Public Economics": 0.55,
+    "Econometrics": 0.55, "Economic History": 0.55, "Monetary Policy": 0.8,
+    "Development Economics": 0.45, "Labor Economics": 0.4, "Political Economy": 0.5,
+  },
+  "Microeconomics": {
+    "Industrial Organization": 0.75, "Behavioral Economics": 0.7, "Labor Economics": 0.6,
+    "Public Economics": 0.6, "Health Economics": 0.55, "Econometrics": 0.5,
+    "Law and Economics": 0.6, "Management / Organization Studies": 0.5,
+  },
+  "Financial Economics": {
+    "Macroeconomics": 0.65, "Industrial Organization": 0.5, "Econometrics": 0.5,
+    "International Economics": 0.5, "Behavioral Economics": 0.5, "Law and Economics": 0.55,
+    "Management / Organization Studies": 0.55,
+  },
+  "Econometrics": {
+    "Microeconomics": 0.5, "Macroeconomics": 0.55, "Labor Economics": 0.4,
+    "Financial Economics": 0.5, "Political Methodology": 0.65,
+    "Psychology (Behavioral/Social)": 0.3,
+  },
+  "International Economics": {
+    "Macroeconomics": 0.7, "Development Economics": 0.6, "Financial Economics": 0.5,
+    "Political Economy": 0.6, "International Relations": 0.65, "Economic History": 0.45,
+  },
+  "Industrial Organization": {
+    "Microeconomics": 0.75, "Law and Economics": 0.65, "Financial Economics": 0.5,
+    "Management / Organization Studies": 0.6, "Labor Economics": 0.5, "Public Economics": 0.5,
+    "Behavioral Economics": 0.5,
+  },
+  "Behavioral Economics": {
+    "Microeconomics": 0.7, "Psychology (Behavioral/Social)": 0.75, "Health Economics": 0.5,
+    "Public Economics": 0.5, "Labor Economics": 0.55, "Industrial Organization": 0.5,
+    "Development Economics": 0.45, "Management / Organization Studies": 0.55,
+  },
+  "Health Economics": {
+    "Public Economics": 0.65, "Labor Economics": 0.6, "Development Economics": 0.65,
+    "Behavioral Economics": 0.5, "Microeconomics": 0.55, "Demography": 0.6,
+    "Public Policy": 0.6, "Psychology (Behavioral/Social)": 0.45,
+  },
+  "Environmental Economics": {
+    "Public Economics": 0.55, "Development Economics": 0.55, "International Economics": 0.4,
+    "Agricultural Economics": 0.6, "Urban Economics": 0.5, "Political Economy": 0.45,
+    "Public Policy": 0.55,
+  },
+  "Urban Economics": {
+    "Labor Economics": 0.6, "Public Economics": 0.55, "Environmental Economics": 0.5,
+    "Development Economics": 0.5, "Sociology": 0.5, "Demography": 0.55,
+  },
+  "Economic History": {
+    "Macroeconomics": 0.55, "Development Economics": 0.5, "Political Economy": 0.6,
+    "International Economics": 0.45, "Labor Economics": 0.45, "Comparative Politics": 0.5,
+  },
+  "Agricultural Economics": {
+    "Development Economics": 0.7, "Environmental Economics": 0.6, "Health Economics": 0.4,
+    "International Economics": 0.4,
+  },
+  // Political Science fields
+  "Political Economy": {
+    "Public Economics": 0.7, "Development Economics": 0.75, "Comparative Politics": 0.75,
+    "International Relations": 0.5, "Public Policy": 0.7, "Economic History": 0.6,
+    "Labor Economics": 0.5, "Macroeconomics": 0.5, "Sociology": 0.5,
+    "Public Administration": 0.55,
+  },
+  "Comparative Politics": {
+    "Political Economy": 0.75, "International Relations": 0.55, "Public Policy": 0.6,
+    "Development Economics": 0.6, "Sociology": 0.55, "Economic History": 0.5,
+    "Security Studies": 0.45, "Public Administration": 0.55,
+  },
+  "International Relations": {
+    "Political Economy": 0.5, "Comparative Politics": 0.55, "Security Studies": 0.7,
+    "International Economics": 0.65, "Public Policy": 0.45, "Economic History": 0.4,
+  },
+  "American Politics": {
+    "Public Policy": 0.65, "Political Economy": 0.5, "Comparative Politics": 0.45,
+    "Public Administration": 0.55, "Sociology": 0.45, "Law and Economics": 0.5,
+  },
+  "Public Policy": {
+    "Public Economics": 0.75, "Political Economy": 0.7, "Public Administration": 0.7,
+    "Health Economics": 0.6, "Labor Economics": 0.6, "Development Economics": 0.65,
+    "American Politics": 0.65, "Comparative Politics": 0.6, "Sociology": 0.5,
+  },
+  "Security Studies": {
+    "International Relations": 0.7, "Comparative Politics": 0.45, "Political Economy": 0.35,
+  },
+  "Political Methodology": {
+    "Econometrics": 0.65, "Political Economy": 0.4, "Comparative Politics": 0.4,
+  },
+};
+
+/**
+ * Get the affinity score between two fields.
+ * Returns 1.0 for same field, looks up the matrix for different fields,
+ * and returns 0.2 (minimal baseline) for unknown pairs.
+ */
+export function getFieldAffinity(fieldA: string, fieldB: string): number {
+  if (fieldA === fieldB) return 1.0;
+  const affinityMap = FIELD_AFFINITY[fieldA];
+  if (affinityMap && affinityMap[fieldB] !== undefined) return affinityMap[fieldB];
+  // Check reverse
+  const reverseMap = FIELD_AFFINITY[fieldB];
+  if (reverseMap && reverseMap[fieldA] !== undefined) return reverseMap[fieldA];
+  return 0.2; // Unknown pairs get minimal affinity
 }
 
 /**
