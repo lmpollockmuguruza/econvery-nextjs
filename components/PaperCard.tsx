@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import type { ScoredPaper } from "@/lib/types";
 
 interface PaperCardProps {
@@ -23,20 +23,20 @@ export function PaperCard({ paper, index = 0, compact = false }: PaperCardProps)
 
   const formatAuthors = (authors: string[]) => {
     if (!authors.length) return "Unknown authors";
-    if (authors.length <= 2) return authors.join(", ");
-    return `${authors.slice(0, 2).join(", ")} +${authors.length - 2}`;
+    if (authors.length <= 2) return authors.join(" & ");
+    return `${authors[0]} et al.`;
   };
 
-  const getScoreClass = (score: number) => {
-    if (score >= 7) return "score-high";
-    if (score >= 4) return "score-medium";
-    return "score-low";
+  const getScoreWeight = (score: number) => {
+    if (score >= 8) return { color: "var(--fg)", fontWeight: 600 };
+    if (score >= 6) return { color: "var(--fg-muted)", fontWeight: 400 };
+    return { color: "var(--fg-faint)", fontWeight: 400 };
   };
 
   const getTierLabel = (tier?: "core" | "explore" | "discovery") => {
     switch (tier) {
-      case "core": return { label: "Core match", className: "tier-badge-core" };
-      case "explore": return { label: "Worth exploring", className: "tier-badge-explore" };
+      case "core": return { label: "Core", className: "tier-badge-core" };
+      case "explore": return { label: "Explore", className: "tier-badge-explore" };
       case "discovery": return { label: "Discovery", className: "tier-badge-discovery" };
       default: return null;
     }
@@ -54,168 +54,204 @@ export function PaperCard({ paper, index = 0, compact = false }: PaperCardProps)
   const tierInfo = getTierLabel(paper.match_tier);
   const journalTier = getJournalTierLabel(paper.journal_tier);
   const link = paper.doi_url || paper.oa_url;
-
-  // Compact mode: single line, click to expand
-  if (compact && !isExpanded) {
-    return (
-      <article
-        className="card group cursor-pointer"
-        style={{ animationDelay: `${index * 0.04}s` }}
-        onClick={() => setIsExpanded(true)}
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate font-display text-base font-medium" style={{ color: "var(--ink)" }}>
-              {paper.title}
-            </h3>
-            <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: "var(--ink-muted)" }}>
-              <span>{paper.journal}</span>
-              {journalTier && (
-                <>
-                  <span style={{ color: "var(--ink-ghost)" }}>·</span>
-                  <span className="tag-tier">{journalTier}</span>
-                </>
-              )}
-              <span style={{ color: "var(--ink-ghost)" }}>·</span>
-              <span>{formatAuthors(paper.authors)}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {tierInfo && (
-              <span className={`tag ${tierInfo.className}`}>{tierInfo.label}</span>
-            )}
-            <span className={`score text-lg ${getScoreClass(paper.relevance_score)}`}>
-              {paper.relevance_score.toFixed(1)}
-            </span>
-          </div>
-        </div>
-      </article>
-    );
-  }
+  const scoreStyle = getScoreWeight(paper.relevance_score);
 
   return (
-    <article
-      className="card group"
-      style={{ animationDelay: `${index * 0.04}s` }}
+    <div
+      style={{
+        borderBottom: "1px solid var(--border)",
+        animation: `fadeSlideIn 0.3s ease ${index * 0.04}s both`,
+      }}
     >
-      {/* Top meta line: journal, tier, score */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs flex-wrap" style={{ color: "var(--ink-muted)" }}>
-          <span className="font-medium" style={{ color: "var(--ink-soft)" }}>{paper.journal}</span>
-          {journalTier && (
-            <>
-              <span style={{ color: "var(--ink-ghost)" }}>·</span>
-              <span className="tag-tier">{journalTier}</span>
-            </>
-          )}
-          {tierInfo && (
-            <>
-              <span style={{ color: "var(--ink-ghost)" }}>·</span>
-              <span className={`tag ${tierInfo.className}`}>{tierInfo.label}</span>
-            </>
-          )}
-        </div>
-        <span className={`score text-xl shrink-0 ${getScoreClass(paper.relevance_score)}`}>
+      {/* Main row — clickable */}
+      <div
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "2.8rem 1fr auto",
+          gap: "1rem",
+          padding: "0.875rem 0",
+          cursor: "pointer",
+          alignItems: "baseline",
+          transition: "background 0.1s ease",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+      >
+        {/* Score */}
+        <span
+          className="font-mono"
+          style={{
+            fontSize: "0.8125rem",
+            color: scoreStyle.color,
+            fontWeight: scoreStyle.fontWeight,
+            letterSpacing: "-0.01em",
+          }}
+        >
           {paper.relevance_score.toFixed(1)}
         </span>
-      </div>
 
-      {/* Title */}
-      <h3 className="mt-2.5 font-display text-[1.2rem] font-medium leading-snug" style={{ color: "var(--ink)" }}>
-        {link ? (
-          <a href={link} target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
+        {/* Title + meta */}
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "0.9375rem",
+              lineHeight: 1.4,
+              color: "var(--fg)",
+              fontWeight: 450,
+              letterSpacing: "-0.01em",
+              fontFamily: "var(--font-sans)",
+            }}
+          >
             {paper.title}
-          </a>
-        ) : paper.title}
-      </h3>
+          </div>
+          <div
+            className="font-mono"
+            style={{
+              marginTop: "0.25rem",
+              fontSize: "0.75rem",
+              color: "var(--fg-muted)",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.125rem 0.5rem",
+              alignItems: "center",
+            }}
+          >
+            <span>{formatAuthors(paper.authors)}</span>
+            <span style={{ color: "var(--fg-faint)" }}>·</span>
+            <span>{paper.journal}</span>
+            {journalTier && (
+              <>
+                <span style={{ color: "var(--fg-faint)" }}>·</span>
+                <span style={{ color: "var(--fg-faint)" }}>{journalTier}</span>
+              </>
+            )}
+            <span style={{ color: "var(--fg-faint)" }}>·</span>
+            <span>{formatDate(paper.publication_date)}</span>
+          </div>
+        </div>
 
-      {/* Authors */}
-      <p className="mt-1.5 text-sm" style={{ color: "var(--ink-muted)" }}>
-        {formatAuthors(paper.authors)}
-      </p>
-
-      {/* Abstract preview (first ~150 chars) */}
-      {paper.abstract && (
-        <p className="mt-2.5 text-sm leading-relaxed line-clamp-3" style={{ color: "var(--ink-soft)" }}>
-          {paper.abstract.length > 200 ? paper.abstract.slice(0, 200) + "..." : paper.abstract}
-        </p>
-      )}
-
-      {/* Tags */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {paper.matched_interests?.slice(0, 2).map((interest) => (
-          <span key={interest} className="tag tag-interest">{interest}</span>
-        ))}
-        {paper.matched_methods?.slice(0, 2).map((method) => (
-          <span key={method} className="tag tag-method">{method}</span>
-        ))}
-        {paper.is_open_access && <span className="tag tag-oa">Open Access</span>}
+        {/* Right tags */}
+        <div style={{ display: "flex", gap: "0.375rem", alignItems: "center", flexShrink: 0 }}>
+          {tierInfo && (
+            <span className={`tag ${tierInfo.className}`}>
+              {tierInfo.label}
+            </span>
+          )}
+          {paper.is_open_access && (
+            <span className="tag tag-oa">OA</span>
+          )}
+        </div>
       </div>
 
-      {/* Match explanation (editorial italic) */}
-      {paper.match_explanation && (
-        <p className="mt-3 font-display text-sm italic" style={{ color: "var(--ink-muted)" }}>
-          {paper.match_explanation}
-        </p>
-      )}
-
-      {/* AI scoring detail */}
-      {paper.ai_score != null && paper.original_score != null && (
-        <div className="mt-2 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs"
-          style={{ background: "rgba(107, 39, 55, 0.04)", color: "var(--burgundy)" }}>
-          <span>
-            AI: {paper.ai_score.toFixed(1)}
-            {paper.ai_discovery != null && ` · Discovery: ${paper.ai_discovery.toFixed(1)}`}
-            {" · "}Base: {paper.original_score.toFixed(1)}
-            {paper.ai_explanation && ` · ${paper.ai_explanation}`}
-          </span>
-        </div>
-      )}
-
-      {/* Footer divider + date + full abstract toggle + link */}
-      <div className="mt-3.5 pt-3 flex items-center justify-between gap-3"
-        style={{ borderTop: "1px solid var(--border-subtle)" }}>
-        <div className="flex items-center gap-3 text-xs" style={{ color: "var(--ink-faint)" }}>
-          <span>{formatDate(paper.publication_date)}</span>
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-1 transition-colors hover:opacity-80"
-            style={{ color: "var(--ink-muted)" }}
-          >
-            {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            {isExpanded ? "Less" : "Full abstract"}
-          </button>
-        </div>
-        {link && (
-          <a
-            href={link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs font-medium transition-colors hover:opacity-80"
-            style={{ color: "var(--burgundy)" }}
-          >
-            Open <ExternalLink className="h-3 w-3" />
-          </a>
-        )}
-      </div>
-
-      {/* Full abstract */}
-      {isExpanded && paper.abstract && (
-        <div className="mt-3 animate-fade-in text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-          {paper.abstract}
-        </div>
-      )}
-
-      {/* Close compact mode */}
-      {compact && isExpanded && (
-        <button
-          onClick={() => setIsExpanded(false)}
-          className="mt-2 text-xs transition-colors hover:opacity-80"
-          style={{ color: "var(--ink-faint)" }}
+      {/* Expanded content */}
+      {isExpanded && (
+        <div
+          className="animate-fade-in"
+          style={{ padding: "0 0 1rem 3.8rem" }}
         >
-          Collapse
-        </button>
+          {/* Abstract */}
+          {paper.abstract && (
+            <p
+              style={{
+                fontSize: "0.8125rem",
+                lineHeight: 1.7,
+                color: "var(--fg-soft)",
+                maxWidth: "60ch",
+              }}
+            >
+              {paper.abstract}
+            </p>
+          )}
+
+          {/* Tags row */}
+          <div
+            style={{
+              marginTop: "0.75rem",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.375rem",
+              alignItems: "center",
+            }}
+          >
+            {paper.matched_interests?.slice(0, 3).map((interest) => (
+              <span key={interest} className="tag tag-interest">{interest}</span>
+            ))}
+            {paper.matched_methods?.slice(0, 2).map((method) => (
+              <span
+                key={method}
+                className="font-mono"
+                style={{
+                  fontSize: "0.6875rem",
+                  color: "var(--accent)",
+                  padding: "0.125rem 0.375rem",
+                  background: "var(--accent-wash)",
+                }}
+              >
+                {method}
+              </span>
+            ))}
+          </div>
+
+          {/* Match explanation */}
+          {paper.match_explanation && (
+            <p
+              className="font-serif italic"
+              style={{
+                marginTop: "0.625rem",
+                fontSize: "0.8125rem",
+                color: "var(--fg-muted)",
+              }}
+            >
+              {paper.match_explanation}
+            </p>
+          )}
+
+          {/* AI scoring detail */}
+          {paper.ai_score != null && paper.original_score != null && (
+            <div
+              className="font-mono"
+              style={{
+                marginTop: "0.5rem",
+                fontSize: "0.6875rem",
+                color: "var(--accent)",
+                padding: "0.25rem 0.5rem",
+                background: "var(--accent-wash)",
+                border: "1px solid var(--accent-border)",
+                display: "inline-block",
+              }}
+            >
+              AI: {paper.ai_score.toFixed(1)}
+              {paper.ai_discovery != null && ` · Discovery: ${paper.ai_discovery.toFixed(1)}`}
+              {" · "}Base: {paper.original_score.toFixed(1)}
+              {paper.ai_explanation && ` · ${paper.ai_explanation}`}
+            </div>
+          )}
+
+          {/* Link */}
+          {link && (
+            <div style={{ marginTop: "0.75rem" }}>
+              <a
+                href={link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono"
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--accent)",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "2px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.25rem",
+                }}
+              >
+                Open paper <ExternalLink style={{ width: "0.7rem", height: "0.7rem" }} />
+              </a>
+            </div>
+          )}
+        </div>
       )}
-    </article>
+    </div>
   );
 }
