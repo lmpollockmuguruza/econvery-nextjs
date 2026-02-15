@@ -463,3 +463,69 @@ input[type="range"]::-moz-range-thumb {
 .text-balance { text-wrap: balance; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   VERSO LOGO — letter-by-letter staggered wave on hover
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.verso-logo {
+  display: inline-flex;
+  cursor: default;
+}
+
+.verso-letter {
+  display: inline-block;
+  transition: color 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, color;
+}
+
+/* Stagger delays for each letter */
+.verso-letter:nth-child(1) { transition-delay: 0s; }
+.verso-letter:nth-child(2) { transition-delay: 0.04s; }
+.verso-letter:nth-child(3) { transition-delay: 0.08s; }
+.verso-letter:nth-child(4) { transition-delay: 0.12s; }
+.verso-letter:nth-child(5) { transition-delay: 0.16s; }
+
+/* Hover: wave up + burgundy */
+.verso-logo:hover .verso-letter,
+.verso-logo:active .verso-letter {
+  color: var(--accent);
+  transform: translateY(-3px);
+}
+
+/* Return: stagger the settle-back too */
+.verso-logo:not(:hover) .verso-letter:nth-child(1) { transition-delay: 0.08s; }
+.verso-logo:not(:hover) .verso-letter:nth-child(2) { transition-delay: 0.06s; }
+.verso-logo:not(:hover) .verso-letter:nth-child(3) { transition-delay: 0.04s; }
+.verso-logo:not(:hover) .verso-letter:nth-child(4) { transition-delay: 0.02s; }
+.verso-logo:not(:hover) .verso-letter:nth-child(5) { transition-delay: 0s; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PORTFOLIO LINK — top-left persistent nav
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.portfolio-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--fg-faint);
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.portfolio-link:hover {
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+.portfolio-link svg {
+  transition: transform 0.2s ease;
+}
+
+.portfolio-link:hover svg {
+  transform: translateX(-2px);
+}
