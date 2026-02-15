@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  ArrowLeft, ArrowRight, Search, RotateCcw, Sparkles,
+  ArrowLeft, ArrowRight, ArrowUpLeft, Search, RotateCcw, Sparkles,
   SkipForward, BookOpen, FlaskConical, Lightbulb, Globe,
   Brain, Key, CheckCircle, AlertCircle, ExternalLink,
   ChevronDown, Compass, Focus, Sun, Moon
@@ -122,6 +122,20 @@ function useTheme() {
 
 function toggleItem(arr: string[], item: string) {
   return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
+}
+
+/** Animated logo — each letter waves up and turns accent on hover */
+function VersoLogo({ size = "1.5rem" }: { size?: string }) {
+  return (
+    <span
+      className="verso-logo font-serif"
+      style={{ fontSize: size, color: "var(--fg)", letterSpacing: "-0.02em" }}
+    >
+      {"verso".split("").map((char, i) => (
+        <span key={i} className="verso-letter">{char}</span>
+      ))}
+    </span>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -284,8 +298,21 @@ export default function Home() {
 
   return (
     <main style={{ minHeight: "100vh" }}>
-      <div style={{ position: "fixed", top: 0, right: 0, padding: "1rem 1.5rem", zIndex: 50 }}>
-        <button onClick={toggleTheme} className="theme-toggle">
+      {/* Top bar — portfolio link + theme toggle */}
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0,
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "1rem 1.5rem", zIndex: 50, pointerEvents: "none",
+      }}>
+        <a
+          href="https://lmpollockmuguruza.github.io/"
+          className="portfolio-link"
+          style={{ pointerEvents: "auto" }}
+        >
+          <ArrowUpLeft className="h-3 w-3" />
+          Portfolio
+        </a>
+        <button onClick={toggleTheme} className="theme-toggle" style={{ pointerEvents: "auto" }}>
           {isDark ? <Sun className="inline h-3 w-3 mr-1" /> : <Moon className="inline h-3 w-3 mr-1" />}
           {isDark ? "Light" : "Dark"}
         </button>
@@ -323,9 +350,7 @@ function StepWelcome({ state, updateState, nextStep }: StepProps) {
   return (
     <div className="animate-fade-in">
       <div style={{ marginBottom: "3rem" }}>
-        <div className="font-serif" style={{ fontSize: "1.5rem", color: "var(--fg)", letterSpacing: "-0.02em" }}>
-          verso
-        </div>
+        <VersoLogo size="1.5rem" />
         <div className="font-mono" style={{ marginTop: "0.25rem", fontSize: "0.75rem", color: "var(--fg-faint)" }}>
           recent research, surfaced for you
         </div>
@@ -1016,7 +1041,7 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
         display: "flex", justifyContent: "space-between", alignItems: "flex-start",
         paddingBottom: "1.25rem", borderBottom: "1px solid var(--border)",
       }}>
-        <div className="font-serif" style={{ fontSize: "1.375rem", color: "var(--fg)", letterSpacing: "-0.02em" }}>verso</div>
+        <VersoLogo size="1.375rem" />
         <div className="flex gap-3 items-center">
           <span className="font-mono" style={{ fontSize: "0.6875rem", color: "var(--fg-faint)" }}>
             {state.name}
@@ -1102,7 +1127,7 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
         display: "flex", justifyContent: "space-between", fontSize: "0.6875rem", color: "var(--fg-faint)",
       }}>
         <span>Data via OpenAlex · Scored by relevance algorithm</span>
-        <span>verso</span>
+        <VersoLogo size="0.75rem" />
       </div>
     </div>
   );
