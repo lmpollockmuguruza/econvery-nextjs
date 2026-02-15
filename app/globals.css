@@ -411,7 +411,14 @@ input[type="range"]::-moz-range-thumb {
 
 .progress-bar { display: flex; gap: 0.25rem; margin-bottom: 2rem; }
 .progress-segment { height: 1px; flex: 1; background: var(--border); transition: background 0.3s ease; }
-.progress-segment.active { background: var(--fg); }
+.progress-segment.active { background: var(--accent); }
+
+/* Chip accent variant — selected state uses burgundy instead of black */
+.chip.selected-accent {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════
    ANIMATIONS
