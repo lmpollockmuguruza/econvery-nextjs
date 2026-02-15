@@ -70,64 +70,94 @@ export function MultiSelect({
 
   return (
     <div ref={containerRef} className="relative">
+      {/* Trigger */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between rounded-xl px-4 py-2.5 text-left transition-all"
+        className="flex w-full items-center justify-between px-3 py-2 text-left font-mono text-sm transition-all"
         style={{
-          border: "1px solid var(--border-subtle)",
-          background: "var(--bg-card)",
-          color: selected.length === 0 ? "var(--ink-faint)" : "var(--ink-soft)",
+          border: "1px solid var(--border)",
+          background: "transparent",
+          color: selected.length === 0 ? "var(--fg-faint)" : "var(--fg-soft)",
         }}
       >
         <span className="truncate">
           {selected.length === 0 ? placeholder : `${selected.length} selected`}
         </span>
-        <ChevronDown className={`ml-2 h-4 w-4 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
-          style={{ color: "var(--ink-faint)" }} />
+        <ChevronDown
+          className={`ml-2 h-3.5 w-3.5 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          style={{ color: "var(--fg-faint)" }}
+        />
       </button>
 
+      {/* Selected tags */}
       {selected.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {selected.slice(0, 5).map((option) => (
-            <span key={option} className="tag tag-interest">
+            <span key={option} className="tag tag-accent">
               {option.length > 25 ? option.substring(0, 25) + "…" : option}
-              <button type="button" onClick={(e) => { e.stopPropagation(); removeOption(option); }}
-                className="ml-0.5 rounded-full p-0.5 hover:opacity-70">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); removeOption(option); }}
+                className="ml-0.5 hover:opacity-70"
+              >
                 <X className="h-3 w-3" />
               </button>
             </span>
           ))}
           {selected.length > 5 && (
-            <span className="text-xs" style={{ color: "var(--ink-faint)" }}>+{selected.length - 5} more</span>
+            <span className="font-mono text-xs" style={{ color: "var(--fg-faint)" }}>
+              +{selected.length - 5} more
+            </span>
           )}
-          <button type="button" onClick={clearAll} className="text-xs hover:opacity-70" style={{ color: "var(--ink-faint)" }}>
+          <button
+            type="button"
+            onClick={clearAll}
+            className="font-mono text-xs hover:opacity-70"
+            style={{ color: "var(--fg-faint)" }}
+          >
             Clear all
           </button>
         </div>
       )}
 
+      {/* Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 mt-1 max-h-72 w-full overflow-hidden rounded-xl animate-scale-in"
+        <div
+          className="absolute z-50 mt-1 max-h-72 w-full overflow-hidden animate-fade-in"
           style={{
-            border: "var(--glass-border)",
-            background: "var(--bg-card-hover)",
-            backdropFilter: "blur(var(--glass-blur))",
-            WebkitBackdropFilter: "blur(var(--glass-blur))",
-            boxShadow: "var(--glass-shadow-elevated)",
-          }}>
+            border: "1px solid var(--border-strong)",
+            background: "var(--bg)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+          }}
+        >
           {searchable && (
-            <div className="sticky top-0 p-2" style={{ borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-card-hover)" }}>
+            <div
+              className="sticky top-0 p-2"
+              style={{ borderBottom: "1px solid var(--border)", background: "var(--bg)" }}
+            >
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "var(--ink-faint)" }} />
+                <Search
+                  className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+                  style={{ color: "var(--fg-faint)" }}
+                />
                 <input
                   ref={inputRef}
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search..."
-                  className="w-full rounded-lg border-0 py-2 pl-9 pr-4 text-sm"
-                  style={{ background: "var(--bg-glass)", color: "var(--ink)" }}
+                  className="w-full font-mono text-sm"
+                  style={{
+                    padding: "0.375rem 0.5rem 0.375rem 2rem",
+                    border: "none",
+                    borderBottom: "1px solid var(--border)",
+                    background: "transparent",
+                    color: "var(--fg)",
+                    fontSize: "0.8125rem",
+                    fontFamily: "var(--font-mono)",
+                    outline: "none",
+                  }}
                 />
               </div>
             </div>
@@ -137,44 +167,67 @@ export function MultiSelect({
             {groupedFiltered
               ? groupedFiltered.map((group) => (
                   <div key={group.label} className="mb-2">
-                    <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-faint)" }}>
+                    <div
+                      className="px-3 py-1.5 font-mono text-xs uppercase tracking-wider"
+                      style={{ color: "var(--fg-faint)", letterSpacing: "0.08em" }}
+                    >
                       {group.label}
                     </div>
                     {group.options.map((option) => (
                       <button
-                        key={option} type="button"
+                        key={option}
+                        type="button"
                         onClick={() => toggleOption(option)}
                         disabled={maxSelections !== undefined && selected.length >= maxSelections && !selected.includes(option)}
-                        className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         style={{
-                          color: selected.includes(option) ? "var(--burgundy)" : "var(--ink-soft)",
-                          background: selected.includes(option) ? "var(--burgundy-wash)" : "transparent",
+                          color: selected.includes(option) ? "var(--accent)" : "var(--fg-soft)",
+                          background: selected.includes(option) ? "var(--accent-wash)" : "transparent",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!selected.includes(option)) e.currentTarget.style.background = "var(--hover)";
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!selected.includes(option)) e.currentTarget.style.background = "transparent";
                         }}
                       >
                         <span className="truncate">{option}</span>
-                        {selected.includes(option) && <Check className="h-4 w-4 shrink-0" style={{ color: "var(--burgundy)" }} />}
+                        {selected.includes(option) && (
+                          <Check className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--accent)" }} />
+                        )}
                       </button>
                     ))}
                   </div>
                 ))
               : filteredOptions.map((option) => (
                   <button
-                    key={option} type="button"
+                    key={option}
+                    type="button"
                     onClick={() => toggleOption(option)}
                     disabled={maxSelections !== undefined && selected.length >= maxSelections && !selected.includes(option)}
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                     style={{
-                      color: selected.includes(option) ? "var(--burgundy)" : "var(--ink-soft)",
-                      background: selected.includes(option) ? "var(--burgundy-wash)" : "transparent",
+                      color: selected.includes(option) ? "var(--accent)" : "var(--fg-soft)",
+                      background: selected.includes(option) ? "var(--accent-wash)" : "transparent",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!selected.includes(option)) e.currentTarget.style.background = "var(--hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!selected.includes(option)) e.currentTarget.style.background = "transparent";
                     }}
                   >
                     <span className="truncate">{option}</span>
-                    {selected.includes(option) && <Check className="h-4 w-4 shrink-0" style={{ color: "var(--burgundy)" }} />}
+                    {selected.includes(option) && (
+                      <Check className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--accent)" }} />
+                    )}
                   </button>
                 ))
             }
             {filteredOptions.length === 0 && (
-              <div className="px-3 py-4 text-center text-sm" style={{ color: "var(--ink-muted)" }}>No options found</div>
+              <div className="px-3 py-4 text-center font-mono text-sm" style={{ color: "var(--fg-muted)" }}>
+                No options found
+              </div>
             )}
           </div>
         </div>
