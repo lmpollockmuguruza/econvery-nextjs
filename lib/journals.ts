@@ -681,6 +681,8 @@ export function getJournalsByField(field: JournalField): Record<string, Journal>
       return MANAGEMENT_JOURNALS;
     case "working_papers":
       return WORKING_PAPERS;
+    case "arxiv":
+      return {};
   }
 }
 

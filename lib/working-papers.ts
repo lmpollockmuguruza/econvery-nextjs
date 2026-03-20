@@ -14,6 +14,7 @@
  */
 
 import type { Paper } from "./types";
+import { reconstructAbstract } from "./openalex";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -26,7 +27,7 @@ const CONFIG = {
   // OpenAlex endpoints
   OPENALEX_WORKS_URL: "https://api.openalex.org/works",
   OPENALEX_SOURCES_URL: "https://api.openalex.org/sources",
-  OPENALEX_EMAIL: "econvery@research.app",
+  OPENALEX_EMAIL: "verso@research.app",
   
   // Known OpenAlex Institution IDs (fallback if source lookup fails)
   // These are institution IDs, not source IDs
@@ -313,25 +314,45 @@ export async function fetchWorkingPapersFromOpenAlex(
   return papers.slice(0, maxResults);
 }
 
+interface OpenAlexWorkRaw {
+  id?: string;
+  doi?: string;
+  title?: string;
+  authorships?: Array<{
+    author?: { display_name?: string };
+    institutions?: Array<{ display_name?: string }>;
+  }>;
+  publication_date?: string;
+  primary_location?: {
+    source?: {
+      display_name?: string;
+      issn?: string[];
+    };
+  };
+  abstract_inverted_index?: Record<string, number[]>;
+  concepts?: Array<{ display_name?: string; score?: number }>;
+  cited_by_count?: number;
+  open_access?: { is_oa?: boolean; oa_url?: string };
+}
+
 /**
  * Process OpenAlex work into Paper format
  */
-function processOpenAlexWork(work: any): Paper | null {
+function processOpenAlexWork(work: OpenAlexWorkRaw): Paper | null {
   const title = work.title;
   if (!title) return null;
-  
-  // Reconstruct abstract
+
   const abstract = reconstructAbstract(work.abstract_inverted_index);
   if (!abstract || abstract.length < 50) return null;
-  
+
   // Extract authors
   const authors: string[] = [];
   for (const authorship of (work.authorships || []).slice(0, 10)) {
     const name = authorship.author?.display_name;
     if (name) authors.push(name);
   }
-  
-  // Extract institutions
+
+  // Extract institutions (unique, max 3)
   const institutions: string[] = [];
   for (const authorship of (work.authorships || []).slice(0, 5)) {
     for (const inst of (authorship.institutions || []).slice(0, 1)) {
@@ -341,84 +362,62 @@ function processOpenAlexWork(work: any): Paper | null {
       }
     }
   }
-  
-  // Journal info
-  const source = work.primary_location?.source || {};
-  const journalName = source.display_name || "Working Paper";
-  
-  // Determine if this is NBER/CEPR
-  const sourceIssns = (work.primary_location?.source?.issn || []).map((i: string) => i.toLowerCase());
-  
-  const isNBER = journalName.toLowerCase().includes("nber") || 
+
+  const source = work.primary_location?.source ?? {};
+  const journalName = source.display_name ?? "Working Paper";
+  const sourceIssns = (source.issn ?? []).map((i) => i.toLowerCase());
+
+  const isNBER =
+    journalName.toLowerCase().includes("nber") ||
     journalName.toLowerCase().includes("national bureau") ||
-    institutions.some(i => i.toLowerCase().includes("nber") || i.toLowerCase().includes("national bureau"));
-  
-  const isCEPR = journalName.toLowerCase().includes("cepr") ||
+    institutions.some((i) =>
+      i.toLowerCase().includes("nber") || i.toLowerCase().includes("national bureau")
+    );
+
+  const isCEPR =
+    journalName.toLowerCase().includes("cepr") ||
     journalName.toLowerCase().includes("centre for economic policy") ||
     journalName.toLowerCase().includes("discussion paper series") ||
     sourceIssns.includes("0265-8003") ||
     sourceIssns.includes("2045-6573") ||
-    institutions.some(i => i.toLowerCase().includes("cepr") || i.toLowerCase().includes("centre for economic policy research"));
-  
-  // Concepts
-  const concepts = (work.concepts || [])
-    .filter((c: any) => (c.score || 0) > 0.2)
+    institutions.some((i) =>
+      i.toLowerCase().includes("cepr") ||
+      i.toLowerCase().includes("centre for economic policy research")
+    );
+
+  const concepts = (work.concepts ?? [])
+    .filter((c) => (c.score ?? 0) > 0.2)
     .slice(0, 8)
-    .map((c: any) => ({
-      name: c.display_name || "",
-      score: Math.round((c.score || 0) * 100) / 100,
+    .map((c) => ({
+      name: c.display_name ?? "",
+      score: Math.round((c.score ?? 0) * 100) / 100,
     }));
-  
-  // Open access
-  const oa = work.open_access || {};
-  const isOpenAccess = oa.is_oa || false;
-  const oaUrl = oa.oa_url || undefined;
-  
-  // DOI
+
+  const oa = work.open_access ?? {};
+  const isOpenAccess = oa.is_oa ?? false;
+  const oaUrl = oa.oa_url;
   const doi = work.doi;
   const doiUrl = doi
     ? `https://doi.org/${doi.replace("https://doi.org/", "")}`
     : undefined;
-  
+
   return {
-    id: (work.id || "").replace("https://openalex.org/", ""),
-    doi: doi || undefined,
+    id: (work.id ?? "").replace("https://openalex.org/", ""),
+    doi: doi ?? undefined,
     doi_url: doiUrl,
     title,
     authors,
     institutions: institutions.slice(0, 3),
     abstract,
     journal: isNBER ? "NBER Working Papers" : isCEPR ? "CEPR Discussion Papers" : journalName,
-    journal_tier: (isNBER || isCEPR) ? 1 : 3,
+    journal_tier: isNBER || isCEPR ? 1 : 3,
     journal_field: "working_papers",
-    publication_date: work.publication_date || "",
+    publication_date: work.publication_date ?? "",
     concepts,
-    cited_by_count: work.cited_by_count || 0,
+    cited_by_count: work.cited_by_count ?? 0,
     is_open_access: isOpenAccess,
     oa_url: oaUrl,
   };
-}
-
-/**
- * Reconstruct abstract from OpenAlex inverted index
- */
-function reconstructAbstract(
-  abstractInvertedIndex: Record<string, number[]> | null | undefined
-): string {
-  if (!abstractInvertedIndex) return "";
-  
-  try {
-    const wordPositions: [number, string][] = [];
-    for (const [word, positions] of Object.entries(abstractInvertedIndex)) {
-      for (const pos of positions) {
-        wordPositions.push([pos, word]);
-      }
-    }
-    wordPositions.sort((a, b) => a[0] - b[0]);
-    return wordPositions.map(([, word]) => word).join(" ");
-  } catch {
-    return "";
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
