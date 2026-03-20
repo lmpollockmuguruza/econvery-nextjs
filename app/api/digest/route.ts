@@ -11,6 +11,9 @@
  * Required env vars:
  *   RESEND_API_KEY               — from resend.com
  *   RESEND_FROM                  — verified sender (default: verso@resend.dev)
+ *   ALLOWED_SEND_EMAILS          — comma-separated list of permitted recipient
+ *                                  addresses for send-now requests; falls back
+ *                                  to RESEND_FROM if not set
  *
  * For cron mode additionally:
  *   UPSTASH_REDIS_REST_URL       — from upstash.com
@@ -80,6 +83,18 @@ export async function POST(request: NextRequest) {
       }
       if (!Array.isArray(papers) || !papers.length) {
         return NextResponse.json({ error: "No papers to send" }, { status: 400 });
+      }
+
+      // Allowlist check — set ALLOWED_SEND_EMAILS as a comma-separated list
+      // of permitted recipient addresses in your Vercel env vars.
+      // If the env var is absent, only the RESEND_FROM address may receive email.
+      const allowedRaw = process.env.ALLOWED_SEND_EMAILS ?? process.env.RESEND_FROM ?? "";
+      const allowedEmails = allowedRaw
+        .split(",")
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+      if (allowedEmails.length > 0 && !allowedEmails.includes(email.toLowerCase())) {
+        return NextResponse.json({ error: "Recipient not permitted" }, { status: 403 });
       }
 
       const resendConfigured = Boolean(process.env.RESEND_API_KEY);

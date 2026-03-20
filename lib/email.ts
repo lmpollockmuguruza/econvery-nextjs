@@ -47,6 +47,16 @@ export interface EmailResult {
 // HTML TEMPLATE
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Escape user-derived strings before inserting into HTML */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
 function tierBadgeStyle(tier?: "core" | "explore" | "discovery"): string {
   switch (tier) {
     case "core":      return "background:#d1fae5;color:#065f46;border:1px solid #a7f3d0";
@@ -59,10 +69,12 @@ function tierBadgeStyle(tier?: "core" | "explore" | "discovery"): string {
 export function generateDigestHtml(data: DigestEmailData): string {
   const { recipientName, papers, profile, days } = data;
 
-  const fieldLabel =
+  const fieldLabel = escapeHtml(
     profile.primary_field && profile.primary_field !== "General Interest (Show me everything)"
       ? profile.primary_field
-      : "General Interest";
+      : "General Interest"
+  );
+  const safeRecipientName = escapeHtml(recipientName);
 
   const date = new Date().toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric", year: "numeric",
@@ -75,9 +87,14 @@ export function generateDigestHtml(data: DigestEmailData): string {
   const paperRows = papers
     .slice(0, 20) // cap email at 20 papers to keep size reasonable
     .map((p) => {
-      const authors =
-        p.authors.length <= 2 ? p.authors.join(" & ") : `${p.authors[0]} et al.`;
+      const authors = escapeHtml(
+        p.authors.length <= 2 ? p.authors.join(" & ") : `${p.authors[0]} et al.`
+      );
+      const safeTitle = escapeHtml(p.title);
+      const safeJournal = escapeHtml(p.journal);
       const link = p.doi_url || p.oa_url;
+      // Only allow http/https URLs to guard against javascript: or data: URIs
+      const safeLink = link && /^https?:\/\//i.test(link) ? link : null;
       const tierStyle = tierBadgeStyle(p.match_tier);
       const tierLabel =
         p.match_tier === "core" ? "Core"
@@ -94,12 +111,12 @@ export function generateDigestHtml(data: DigestEmailData): string {
                   ${p.relevance_score.toFixed(1)}
                 </td>
                 <td>
-                  ${link
-                    ? `<a href="${link}" style="font-size:15px;color:#111;font-weight:500;text-decoration:none;line-height:1.4">${p.title}</a>`
-                    : `<span style="font-size:15px;color:#111;font-weight:500;line-height:1.4">${p.title}</span>`
+                  ${safeLink
+                    ? `<a href="${escapeHtml(safeLink)}" style="font-size:15px;color:#111;font-weight:500;text-decoration:none;line-height:1.4">${safeTitle}</a>`
+                    : `<span style="font-size:15px;color:#111;font-weight:500;line-height:1.4">${safeTitle}</span>`
                   }
                   <div style="margin-top:4px;font-family:monospace;font-size:12px;color:#9ca3af">
-                    ${authors} · ${p.journal}
+                    ${authors} · ${safeJournal}
                   </div>
                   ${tierLabel
                     ? `<span style="display:inline-block;margin-top:6px;padding:2px 6px;font-family:monospace;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;${tierStyle}">${tierLabel}</span>`
@@ -118,7 +135,7 @@ export function generateDigestHtml(data: DigestEmailData): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>verso — reading list for ${recipientName}</title>
+  <title>verso — reading list for ${safeRecipientName}</title>
 </head>
 <body style="margin:0;padding:0;background:#fafaf8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
   <table cellpadding="0" cellspacing="0" width="100%" style="background:#fafaf8;padding:32px 16px">
@@ -139,7 +156,7 @@ export function generateDigestHtml(data: DigestEmailData): string {
         <tr>
           <td style="padding:20px 28px;border-bottom:1px solid #e5e7eb">
             <p style="margin:0;font-size:15px;color:#374151;line-height:1.6">
-              Hi ${recipientName}, here is your curated reading list for <strong>${fieldLabel}</strong>.
+              Hi ${safeRecipientName}, here is your curated reading list for <strong>${fieldLabel}</strong>.
             </p>
             <div style="margin-top:12px;font-family:monospace;font-size:11px;color:#a0a0a0">
               ${papers.length} papers &nbsp;·&nbsp;
