@@ -23,6 +23,7 @@
  */
 
 import type { MatchScore, Paper, ScoredPaper, UserProfile, JournalField } from "./types";
+import type { FeedbackSignal } from "./paper-memory";
 import { isAdjacentField } from "./journals";
 import { isGeneralistField, isGeneralistLevel } from "./profile-options";
 import { 
@@ -489,9 +490,41 @@ export class RelevanceScorer {
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Compute a feedback adjustment delta for a scored paper.
+ *
+ * Positive delta when the paper's matched interests/methods appear frequently
+ * in upvoted history; negative when they appear in downvoted history.
+ * Bounded to ±1.5 to preserve the base scoring range.
+ */
+function applyFeedbackAdjustment(paper: ScoredPaper, signal: FeedbackSignal): number {
+  let delta = 0;
+  const upTotal = Object.values(signal.upvotedInterests).reduce((s, n) => s + n, 0) +
+    Object.values(signal.upvotedMethods).reduce((s, n) => s + n, 0);
+  const downTotal = Object.values(signal.downvotedInterests).reduce((s, n) => s + n, 0) +
+    Object.values(signal.downvotedMethods).reduce((s, n) => s + n, 0);
+  if (upTotal === 0 && downTotal === 0) return 0;
+
+  for (const interest of paper.matched_interests) {
+    const up = signal.upvotedInterests[interest] ?? 0;
+    const down = signal.downvotedInterests[interest] ?? 0;
+    if (upTotal > 0) delta += (up / upTotal) * 1.0;
+    if (downTotal > 0) delta -= (down / downTotal) * 1.0;
+  }
+  for (const method of paper.matched_methods) {
+    const up = signal.upvotedMethods[method] ?? 0;
+    const down = signal.downvotedMethods[method] ?? 0;
+    if (upTotal > 0) delta += (up / upTotal) * 0.5;
+    if (downTotal > 0) delta -= (down / downTotal) * 0.5;
+  }
+
+  return Math.max(-1.5, Math.min(1.5, delta));
+}
+
 export function processPapers(
   profile: UserProfile,
-  papers: Paper[]
+  papers: Paper[],
+  feedbackSignal?: FeedbackSignal
 ): { papers: ScoredPaper[]; summary: string } {
   if (!papers.length) {
     return { papers: [], summary: "No papers found." };
@@ -501,7 +534,7 @@ export function processPapers(
 
   const results: ScoredPaper[] = papers.map((paper) => {
     const match = scorer.scorePaper(paper);
-    return {
+    const scored: ScoredPaper = {
       ...paper,
       relevance_score: match.total,
       matched_interests: match.matched_interests,
@@ -511,6 +544,18 @@ export function processPapers(
       is_adjacent_field: match.is_adjacent_field,
       match_tier: match.match_tier,
     };
+
+    // Apply feedback adjustment from prior ratings
+    if (feedbackSignal) {
+      const delta = applyFeedbackAdjustment(scored, feedbackSignal);
+      if (delta !== 0) {
+        scored.relevance_score = Math.max(1.0, Math.min(10.0, scored.relevance_score + delta));
+        scored.relevance_score = Math.round(scored.relevance_score * 10) / 10;
+        scored.match_tier = classifyMatchTier(scored.relevance_score);
+      }
+    }
+
+    return scored;
   });
 
   // Sort by relevance score (highest first)

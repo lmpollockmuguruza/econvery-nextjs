@@ -1,5 +1,5 @@
 /**
- * OpenAlex API Client for Econvery
+ * OpenAlex API Client
  * ═══════════════════════════════════════════════════════════════════════════
  * Fetches academic papers from top economics and political science journals.
  */
@@ -17,7 +17,7 @@ const OPENALEX_CONFIG = {
   MAX_RETRIES: 3,
   RETRY_DELAY: 1000,
   RATE_LIMIT_DELAY: 100,
-  POLITE_EMAIL: "econvery@research.app",
+  POLITE_EMAIL: "verso@research.app",
   SELECT_FIELDS: [
     "id",
     "doi",
@@ -92,7 +92,7 @@ async function makeRequestWithRetry(
       const response = await fetch(fullUrl, {
         signal: controller.signal,
         headers: {
-          "User-Agent": `Econvery/1.0 (mailto:${OPENALEX_CONFIG.POLITE_EMAIL})`,
+          "User-Agent": `Verso/1.0 (mailto:${OPENALEX_CONFIG.POLITE_EMAIL})`,
         },
       });
 

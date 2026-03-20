@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  ArrowLeft, ArrowRight, ArrowUpLeft, Search, RotateCcw, Sparkles,
+  ArrowUpLeft, Search, RotateCcw, Sparkles,
   SkipForward, BookOpen, FlaskConical, Lightbulb, Globe,
   Brain, Key, CheckCircle, AlertCircle, ExternalLink,
-  ChevronDown, Compass, Focus, Sun, Moon, Copy, Download, X, Check
+  ChevronDown, Compass, Focus, Sun, Moon, Copy, Download, X, Check,
+  Bookmark, Mail,
 } from "lucide-react";
 import { ProgressDots, PaperCard, FunLoading, MultiSelect } from "@/components";
 import {
@@ -17,6 +18,12 @@ import {
   getJournalsByTier, getSmartJournalDefaults, getAllJournalsList
 } from "@/lib/journals";
 import type { ScoredPaper, UserProfile, ApproachPreference, JournalField } from "@/lib/types";
+import {
+  getPaperMemory, setPaperStatus, getPaperFeedback, setPaperFeedback,
+  buildFeedbackSignal, getDismissedIds, getSavedPapers,
+  type PaperMemoryStore, type PaperFeedbackStore,
+} from "@/lib/paper-memory";
+import { papersToBibTeX } from "@/lib/bibtex";
 
 // ═══════════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -45,6 +52,7 @@ interface AppState {
   region: string;
   fieldType: "Economics" | "Political Science" | "Both";
   includeWorkingPapers: boolean;
+  includeArxiv: boolean;
   includeAdjacentFields: boolean;
   selectedAdjacentFields: JournalField[];
   journals: string[];
@@ -76,6 +84,7 @@ const initialState: AppState = {
   region: "Global / No Preference",
   fieldType: "Both",
   includeWorkingPapers: true,
+  includeArxiv: false,
   includeAdjacentFields: false,
   selectedAdjacentFields: [],
   journals: [],
@@ -146,6 +155,40 @@ export default function Home() {
   const [state, setState] = useState<AppState>(initialState);
   const { isDark, toggle: toggleTheme } = useTheme();
 
+  // ── Paper memory state ──────────────────────────────────────────────────
+  const [paperMemory, setPaperMemoryState] = useState<PaperMemoryStore>({});
+  const [paperFeedback, setPaperFeedbackState] = useState<PaperFeedbackStore>({});
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    setPaperMemoryState(getPaperMemory());
+    setPaperFeedbackState(getPaperFeedback());
+  }, []);
+
+  const handleSavePaper = useCallback((id: string, title: string, journal: string) => {
+    const updated = setPaperStatus(id, { title, journal }, "saved");
+    setPaperMemoryState({ ...updated });
+  }, []);
+
+  const handleDismissPaper = useCallback((id: string, title: string, journal: string) => {
+    const updated = setPaperStatus(id, { title, journal }, "dismissed");
+    setPaperMemoryState({ ...updated });
+  }, []);
+
+  const handleClearPaperStatus = useCallback((id: string) => {
+    const updated = setPaperStatus(id, { title: "", journal: "" }, null);
+    setPaperMemoryState({ ...updated });
+  }, []);
+
+  const handleRatePaper = useCallback(
+    (id: string, rating: "up" | "down" | null, interests: string[], methods: string[]) => {
+      const updated = setPaperFeedback(id, rating, interests, methods);
+      setPaperFeedbackState({ ...updated });
+    },
+    []
+  );
+
+  // ── App state persistence ────────────────────────────────────────────────
   useEffect(() => {
     const saved = localStorage.getItem("verso-state");
     if (saved) {
@@ -209,9 +252,13 @@ export default function Home() {
         ? state.journals.join(",")
         : getCoreJournals().join(",");
 
-      const papersRes = await fetch(
-        `/api/papers?daysBack=${state.days}&maxResults=100&journals=${encodeURIComponent(journalParam)}`
-      );
+      const papersUrl = new URL("/api/papers", window.location.origin);
+      papersUrl.searchParams.set("daysBack", String(state.days));
+      papersUrl.searchParams.set("maxResults", "100");
+      papersUrl.searchParams.set("journals", journalParam);
+      if (state.includeArxiv) papersUrl.searchParams.set("arxiv", "true");
+
+      const papersRes = await fetch(papersUrl.toString());
 
       if (!papersRes.ok) throw new Error("Failed to fetch papers");
       const papersData = await papersRes.json();
@@ -222,10 +269,13 @@ export default function Home() {
         return;
       }
 
+      // Build feedback signal from prior ratings
+      const feedbackSignal = buildFeedbackSignal(getPaperFeedback());
+
       const recommendRes = await fetch("/api/recommend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile, papers: papersData.papers }),
+        body: JSON.stringify({ profile, papers: papersData.papers, feedbackSignal }),
       });
 
       if (!recommendRes.ok) throw new Error("Failed to process papers");
@@ -289,7 +339,17 @@ export default function Home() {
       case 5: return <StepInterests {...stepProps} />;
       case 6: return <StepMethods {...stepProps} />;
       case 7: return <StepSources {...stepProps} />;
-      case 8: return <StepResults {...stepProps} />;
+      case 8: return (
+        <StepResults
+          {...stepProps}
+          paperMemory={paperMemory}
+          paperFeedback={paperFeedback}
+          onSavePaper={handleSavePaper}
+          onDismissPaper={handleDismissPaper}
+          onClearPaperStatus={handleClearPaperStatus}
+          onRatePaper={handleRatePaper}
+        />
+      );
       default: return <StepWelcome {...stepProps} />;
     }
   };
@@ -345,6 +405,13 @@ interface StepProps {
   goToStep: (step: number) => void;
   startOver: () => void;
   discoverPapers: () => Promise<void>;
+  // Paper memory (only needed in StepResults)
+  paperMemory?: PaperMemoryStore;
+  paperFeedback?: PaperFeedbackStore;
+  onSavePaper?: (id: string, title: string, journal: string) => void;
+  onDismissPaper?: (id: string, title: string, journal: string) => void;
+  onClearPaperStatus?: (id: string) => void;
+  onRatePaper?: (id: string, rating: "up" | "down" | null, interests: string[], methods: string[]) => void;
 }
 
 // ─── STEP 1: WELCOME ─────────────────────────────────────────────────
@@ -765,8 +832,8 @@ function StepSources({ state, updateState, nextStep, prevStep, discoverPapers }:
       <h2 className="font-serif" style={{ fontSize: "1.25rem", color: "var(--fg)" }}>Where to look?</h2>
       <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>Choose journals, time range, and optional enhancements.</p>
 
-      {/* Working Papers */}
-      <div className="mt-6">
+      {/* Working Papers + arXiv */}
+      <div className="mt-6 space-y-2">
         <label className="flex items-center gap-3 cursor-pointer card-accent" style={{ padding: "0.75rem" }}>
           <input type="checkbox" checked={state.includeWorkingPapers} onChange={toggleWorkingPapers} />
           <div className="flex-1">
@@ -774,6 +841,18 @@ function StepSources({ state, updateState, nextStep, prevStep, discoverPapers }:
             <span className="ml-2 font-mono" style={{ fontSize: "0.6875rem", color: "var(--accent)" }}>(NBER, CEPR)</span>
           </div>
           <span className="tag tag-accent">Cutting-edge</span>
+        </label>
+        <label className="flex items-center gap-3 cursor-pointer card-accent" style={{ padding: "0.75rem" }}>
+          <input
+            type="checkbox"
+            checked={state.includeArxiv}
+            onChange={() => updateState({ includeArxiv: !state.includeArxiv })}
+          />
+          <div className="flex-1">
+            <span style={{ fontWeight: 500, color: "var(--fg)" }}>arXiv Preprints</span>
+            <span className="ml-2 font-mono" style={{ fontSize: "0.6875rem", color: "var(--accent)" }}>economics, social science</span>
+          </div>
+          <span className="tag tag-accent">Frontier</span>
         </label>
       </div>
 
@@ -964,6 +1043,7 @@ function StepSources({ state, updateState, nextStep, prevStep, discoverPapers }:
         <Search className="mr-1.5 inline h-3.5 w-3.5" />
         Searching {state.journals.length} sources
         {state.includeWorkingPapers && <span style={{ color: "var(--accent)" }}> (incl. working papers)</span>}
+        {state.includeArxiv && <span style={{ color: "var(--accent)" }}> + arXiv preprints</span>}
         {state.selectedAdjacentFields.length > 0 && <span> + {state.selectedAdjacentFields.length} related fields</span>}
         {state.aiEnabled && state.geminiApiKey.trim() && <span style={{ color: "var(--accent)" }}> + AI scoring</span>}
       </div>
@@ -980,10 +1060,28 @@ function StepSources({ state, updateState, nextStep, prevStep, discoverPapers }:
 
 // ─── STEP 8: RESULTS ─────────────────────────────────────────────────
 
-function StepResults({ state, updateState, startOver, discoverPapers, goToStep }: StepProps) {
+function StepResults({
+  state,
+  updateState,
+  startOver,
+  discoverPapers,
+  goToStep,
+  paperMemory = {},
+  paperFeedback = {},
+  onSavePaper,
+  onDismissPaper,
+  onClearPaperStatus,
+  onRatePaper,
+}: StepProps) {
   const [showAll, setShowAll] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
+
+  // Email digest state
+  const [digestEmail, setDigestEmail] = useState("");
+  const [digestStatus, setDigestStatus] = useState<"idle" | "sending" | "sent" | "error" | "not-configured">("idle");
+  const [digestMessage, setDigestMessage] = useState("");
 
   if (state.isLoading) {
     return (
@@ -1023,10 +1121,29 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
     );
   }
 
+  // Paper list — filter dismissed papers unless showSavedOnly is on
   const allPapers = state.papers.slice(0, MAX_RESULTS);
-  const topPapers = allPapers.slice(0, TOP_DISPLAY);
-  const morePapers = allPapers.slice(TOP_DISPLAY);
-  const displayPapers = showAll ? allPapers : topPapers;
+  const dismissedIds = new Set(
+    Object.entries(paperMemory)
+      .filter(([, e]) => e.status === "dismissed")
+      .map(([id]) => id)
+  );
+  const savedIds = new Set(
+    Object.entries(paperMemory)
+      .filter(([, e]) => e.status === "saved")
+      .map(([id]) => id)
+  );
+  const savedCount = savedIds.size;
+
+  // When "saved only" is toggled, show all saved regardless of list position
+  const filteredPapers = showSavedOnly
+    ? allPapers.filter((p) => savedIds.has(p.id))
+    : allPapers;
+
+  // Dismissed papers still show (dimmed) in full list, but not in saved-only view
+  const topPapers = filteredPapers.slice(0, TOP_DISPLAY);
+  const morePapers = filteredPapers.slice(TOP_DISPLAY);
+  const displayPapers = showAll || showSavedOnly ? filteredPapers : topPapers;
 
   const coreCount = allPapers.filter(p => p.match_tier === "core").length;
   const exploreCount = allPapers.filter(p => p.match_tier === "explore").length;
@@ -1098,6 +1215,78 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadBibTeX = () => {
+    const profile: UserProfile = {
+      name: state.name,
+      academic_level: state.level,
+      primary_field: state.field,
+      interests: state.interests,
+      methods: state.methods,
+      region: state.region,
+      approach_preference: state.approachPreference,
+      experience_type: isGeneralistField(state.field) ? "generalist" : "specialist",
+      include_adjacent_fields: state.includeAdjacentFields,
+      selected_adjacent_fields: state.selectedAdjacentFields,
+      exploration_level: state.explorationLevel,
+    };
+    const bib = papersToBibTeX(allPapers, profile);
+    const blob = new Blob([bib], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `verso-reading-list-${new Date().toISOString().slice(0, 10)}.bib`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleEmailList = async () => {
+    if (!digestEmail.trim() || digestStatus === "sending") return;
+    setDigestStatus("sending");
+    const profile: UserProfile = {
+      name: state.name,
+      academic_level: state.level,
+      primary_field: state.field,
+      interests: state.interests,
+      methods: state.methods,
+      region: state.region,
+      approach_preference: state.approachPreference,
+      experience_type: isGeneralistField(state.field) ? "generalist" : "specialist",
+      include_adjacent_fields: state.includeAdjacentFields,
+      selected_adjacent_fields: state.selectedAdjacentFields,
+      exploration_level: state.explorationLevel,
+    };
+    try {
+      const res = await fetch("/api/digest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send-now",
+          email: digestEmail.trim(),
+          name: state.name || "Researcher",
+          papers: allPapers,
+          profile,
+          days: state.days,
+        }),
+      });
+      const data = await res.json();
+      if (data.configured === false) {
+        setDigestStatus("not-configured");
+        setDigestMessage("Email not configured. Set RESEND_API_KEY in your environment.");
+      } else if (data.success) {
+        setDigestStatus("sent");
+        setDigestMessage(`Sent to ${digestEmail.trim()}`);
+      } else {
+        setDigestStatus("error");
+        setDigestMessage(data.error || "Failed to send email");
+      }
+    } catch (err) {
+      setDigestStatus("error");
+      setDigestMessage(err instanceof Error ? err.message : "Failed to send email");
+    }
+  };
+
   return (
     <div className="animate-fade-in">
       {/* Header */}
@@ -1126,6 +1315,18 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
               <span style={{ color: "var(--accent)" }}>AI-scored ({state.aiPapersScored})</span>
             </>
           )}
+          {savedCount > 0 && (
+            <>
+              <span className="results-summary-dot">·</span>
+              <button
+                onClick={() => setShowSavedOnly(!showSavedOnly)}
+                className="saved-pill"
+              >
+                <Bookmark className="h-2.5 w-2.5" />
+                {savedCount} saved{showSavedOnly ? " (viewing)" : ""}
+              </button>
+            </>
+          )}
         </div>
         <div className="results-summary-tiers font-mono">
           <span>Core {coreCount}</span>
@@ -1148,12 +1349,23 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
       {/* Paper list */}
       <div>
         {displayPapers.map((paper, index) => (
-          <PaperCard key={paper.id} paper={paper} index={index} compact={showAll && index >= TOP_DISPLAY} />
+          <PaperCard
+            key={paper.id}
+            paper={paper}
+            index={index}
+            compact={showAll && index >= TOP_DISPLAY}
+            status={paperMemory[paper.id]?.status ?? null}
+            rating={paperFeedback[paper.id]?.rating ?? null}
+            onSave={onSavePaper}
+            onDismiss={onDismissPaper}
+            onClearStatus={onClearPaperStatus}
+            onRate={onRatePaper}
+          />
         ))}
       </div>
 
       {/* Show more */}
-      {!showAll && morePapers.length > 0 && (
+      {!showAll && !showSavedOnly && morePapers.length > 0 && (
         <button
           onClick={() => setShowAll(true)}
           className="w-full font-mono mt-4"
@@ -1209,11 +1421,9 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
               </button>
             </div>
 
+            {/* Export options */}
             <div style={{ marginTop: "1.25rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-              <button
-                onClick={handleCopy}
-                className="save-modal-btn"
-              >
+              <button onClick={handleCopy} className="save-modal-btn">
                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                   {copied ? <Check className="h-3.5 w-3.5" style={{ color: "var(--score-high)" }} /> : <Copy className="h-3.5 w-3.5" />}
                   <span>{copied ? "Copied to clipboard" : "Copy reading list"}</span>
@@ -1221,24 +1431,66 @@ function StepResults({ state, updateState, startOver, discoverPapers, goToStep }
                 <span className="font-mono" style={{ fontSize: "0.625rem", color: "var(--fg-faint)" }}>Plain text</span>
               </button>
 
-              <button
-                onClick={handleDownload}
-                className="save-modal-btn"
-              >
+              <button onClick={handleDownload} className="save-modal-btn">
                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                   <Download className="h-3.5 w-3.5" />
                   <span>Download as file</span>
                 </div>
                 <span className="font-mono" style={{ fontSize: "0.625rem", color: "var(--fg-faint)" }}>.md</span>
               </button>
+
+              <button onClick={handleDownloadBibTeX} className="save-modal-btn">
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Export for reference manager</span>
+                </div>
+                <span className="font-mono" style={{ fontSize: "0.625rem", color: "var(--fg-faint)" }}>.bib</span>
+              </button>
             </div>
 
-            <p className="font-mono" style={{
-              marginTop: "1rem", fontSize: "0.625rem", color: "var(--fg-faint)",
-              lineHeight: 1.5,
-            }}>
-              Your curated list — grouped by relevance tier, with scores, authors, and links.
-            </p>
+            {/* Email digest section */}
+            <div className="digest-section">
+              <p className="label" style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                <Mail className="h-3 w-3" style={{ color: "var(--accent)" }} />
+                Email this reading list
+              </p>
+              <div className="digest-input-row">
+                <input
+                  type="email"
+                  value={digestEmail}
+                  onChange={(e) => {
+                    setDigestEmail(e.target.value);
+                    if (digestStatus !== "idle") setDigestStatus("idle");
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleEmailList(); }}
+                  placeholder="your@email.com"
+                  className="digest-email-input"
+                  disabled={digestStatus === "sending" || digestStatus === "sent"}
+                />
+                <button
+                  onClick={handleEmailList}
+                  disabled={!digestEmail.trim() || digestStatus === "sending" || digestStatus === "sent"}
+                  className="btn-primary"
+                  style={{ fontSize: "0.75rem", padding: "0.25rem 0.75rem", whiteSpace: "nowrap" }}
+                >
+                  {digestStatus === "sending" ? "Sending..." : digestStatus === "sent" ? "Sent ✓" : "Send"}
+                </button>
+              </div>
+              {digestStatus === "sent" && (
+                <p className="font-mono" style={{ marginTop: "0.375rem", fontSize: "0.6875rem", color: "var(--score-high)" }}>
+                  {digestMessage}
+                </p>
+              )}
+              {(digestStatus === "error" || digestStatus === "not-configured") && (
+                <p className="font-mono" style={{ marginTop: "0.375rem", fontSize: "0.6875rem", color: "#c53030" }}>
+                  {digestMessage}
+                </p>
+              )}
+              <p className="font-mono" style={{ marginTop: "0.375rem", fontSize: "0.625rem", color: "var(--fg-faint)" }}>
+                Sends a formatted HTML email of your current reading list.
+                {" "}Requires <code>RESEND_API_KEY</code>.
+              </p>
+            </div>
           </div>
         </div>
       )}

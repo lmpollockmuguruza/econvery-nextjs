@@ -2,13 +2,14 @@
 // CORE TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type JournalField = 
-  | "economics" 
-  | "polisci" 
-  | "psychology" 
-  | "sociology" 
+export type JournalField =
+  | "economics"
+  | "polisci"
+  | "psychology"
+  | "sociology"
   | "management"
-  | "working_papers";
+  | "working_papers"
+  | "arxiv";
 
 export interface Journal {
   name: string;
