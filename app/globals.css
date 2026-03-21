@@ -832,6 +832,44 @@ input[type="range"]::-moz-range-thumb {
   border-bottom-color: var(--fg) !important;
 }
 
+.digest-toggle-row {
+  display: flex;
+  gap: 0;
+  margin-top: 0.5rem;
+  border: 1px solid var(--border);
+}
+
+.digest-toggle-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--fg-faint);
+  padding: 0.375rem 0.5rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.digest-toggle-btn + .digest-toggle-btn {
+  border-left: 1px solid var(--border);
+}
+
+.digest-toggle-btn:hover {
+  color: var(--fg-muted);
+  background: var(--hover);
+}
+
+.digest-toggle-active {
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-weight: 500;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    SAVED PAPERS PILL — results summary bar addition
    ═══════════════════════════════════════════════════════════════════════ */

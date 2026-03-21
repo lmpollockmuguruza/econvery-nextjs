@@ -1082,6 +1082,11 @@ function StepResults({
   const [digestEmail, setDigestEmail] = useState("");
   const [digestStatus, setDigestStatus] = useState<"idle" | "sending" | "sent" | "error" | "not-configured">("idle");
   const [digestMessage, setDigestMessage] = useState("");
+  const [emailSavedOnly, setEmailSavedOnly] = useState(false);
+
+  // Subscribe state
+  const [subStatus, setSubStatus] = useState<"idle" | "subscribing" | "subscribed" | "error">("idle");
+  const [subMessage, setSubMessage] = useState("");
 
   if (state.isLoading) {
     return (
@@ -1258,6 +1263,14 @@ function StepResults({
       exploration_level: state.explorationLevel,
     };
     try {
+      const papersToSend = emailSavedOnly
+        ? allPapers.filter((p) => savedIds.has(p.id))
+        : allPapers;
+      if (!papersToSend.length) {
+        setDigestStatus("error");
+        setDigestMessage("No saved papers to send. Save some papers first or send the full list.");
+        return;
+      }
       const res = await fetch("/api/digest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1265,7 +1278,7 @@ function StepResults({
           action: "send-now",
           email: digestEmail.trim(),
           name: state.name || "Researcher",
-          papers: allPapers,
+          papers: papersToSend,
           profile,
           days: state.days,
         }),
@@ -1452,8 +1465,27 @@ function StepResults({
             <div className="digest-section">
               <p className="label" style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
                 <Mail className="h-3 w-3" style={{ color: "var(--accent)" }} />
-                Email this reading list
+                Email reading list
               </p>
+
+              {/* Saved-only toggle */}
+              {savedCount > 0 && (
+                <div className="digest-toggle-row">
+                  <button
+                    onClick={() => setEmailSavedOnly(false)}
+                    className={`digest-toggle-btn ${!emailSavedOnly ? "digest-toggle-active" : ""}`}
+                  >
+                    All {allPapers.length} papers
+                  </button>
+                  <button
+                    onClick={() => setEmailSavedOnly(true)}
+                    className={`digest-toggle-btn ${emailSavedOnly ? "digest-toggle-active" : ""}`}
+                  >
+                    <Bookmark className="h-2.5 w-2.5" /> {savedCount} saved
+                  </button>
+                </div>
+              )}
+
               <div className="digest-input-row">
                 <input
                   type="email"
@@ -1486,10 +1518,110 @@ function StepResults({
                   {digestMessage}
                 </p>
               )}
-              <p className="font-mono" style={{ marginTop: "0.375rem", fontSize: "0.625rem", color: "var(--fg-faint)" }}>
-                Sends a formatted HTML email of your current reading list.
-                {" "}Requires <code>RESEND_API_KEY</code>.
+            </div>
+
+            {/* Weekly subscribe section */}
+            <div className="digest-section">
+              <p className="label" style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                <Compass className="h-3 w-3" style={{ color: "var(--accent)" }} />
+                Weekly digest
               </p>
+              <p className="font-mono" style={{ marginTop: "0.25rem", fontSize: "0.625rem", color: "var(--fg-faint)", lineHeight: 1.5 }}>
+                Receive a curated reading list every Monday based on your current profile.
+              </p>
+
+              {subStatus === "subscribed" ? (
+                <div style={{ marginTop: "0.625rem" }}>
+                  <p className="font-mono" style={{ fontSize: "0.6875rem", color: "var(--score-high)" }}>
+                    {subMessage}
+                  </p>
+                  <button
+                    onClick={async () => {
+                      if (!digestEmail.trim()) return;
+                      try {
+                        await fetch("/api/subscribe", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ action: "unsubscribe", email: digestEmail.trim(), name: state.name }),
+                        });
+                        setSubStatus("idle");
+                        setSubMessage("");
+                      } catch { setSubMessage("Failed to unsubscribe"); }
+                    }}
+                    className="btn-ghost"
+                    style={{ marginTop: "0.5rem", fontSize: "0.6875rem" }}
+                  >
+                    Unsubscribe
+                  </button>
+                </div>
+              ) : (
+                <div style={{ marginTop: "0.5rem" }}>
+                  {!digestEmail.trim() && (
+                    <p className="font-mono" style={{ fontSize: "0.625rem", color: "var(--fg-faint)" }}>
+                      Enter your email above to subscribe.
+                    </p>
+                  )}
+                  {digestEmail.trim() && (
+                    <button
+                      onClick={async () => {
+                        if (!digestEmail.trim() || subStatus === "subscribing") return;
+                        setSubStatus("subscribing");
+                        const profile: UserProfile = {
+                          name: state.name,
+                          academic_level: state.level,
+                          primary_field: state.field,
+                          interests: state.interests,
+                          methods: state.methods,
+                          region: state.region,
+                          approach_preference: state.approachPreference,
+                          experience_type: isGeneralistField(state.field) ? "generalist" : "specialist",
+                          include_adjacent_fields: state.includeAdjacentFields,
+                          selected_adjacent_fields: state.selectedAdjacentFields,
+                          exploration_level: state.explorationLevel,
+                        };
+                        try {
+                          const res = await fetch("/api/subscribe", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              action: "subscribe",
+                              email: digestEmail.trim(),
+                              name: state.name || "Researcher",
+                              profile,
+                              journals: state.journals,
+                              days: state.days,
+                            }),
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setSubStatus("subscribed");
+                            setSubMessage(`Subscribed ${digestEmail.trim()} — Mondays at 8am UTC`);
+                          } else {
+                            setSubStatus("error");
+                            setSubMessage(data.error || "Failed to subscribe");
+                          }
+                        } catch (err) {
+                          setSubStatus("error");
+                          setSubMessage(err instanceof Error ? err.message : "Failed to subscribe");
+                        }
+                      }}
+                      disabled={subStatus === "subscribing"}
+                      className="btn-primary"
+                      style={{ fontSize: "0.75rem", padding: "0.3rem 0.875rem" }}
+                    >
+                      {subStatus === "subscribing" ? "Subscribing..." : `Subscribe ${digestEmail.trim()}`}
+                    </button>
+                  )}
+                  {subStatus === "error" && (
+                    <p className="font-mono" style={{ marginTop: "0.375rem", fontSize: "0.6875rem", color: "#c53030" }}>
+                      {subMessage}
+                    </p>
+                  )}
+                  <p className="font-mono" style={{ marginTop: "0.5rem", fontSize: "0.6rem", color: "var(--fg-faint)", lineHeight: 1.5 }}>
+                    Uses your current profile settings. Re-subscribe anytime to update preferences.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

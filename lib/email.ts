@@ -84,51 +84,74 @@ export function generateDigestHtml(data: DigestEmailData): string {
   const exploreCount = papers.filter((p) => p.match_tier === "explore").length;
   const discoverCount = papers.filter((p) => p.match_tier === "discovery").length;
 
-  const paperRows = papers
-    .slice(0, 20) // cap email at 20 papers to keep size reasonable
-    .map((p) => {
-      const authors = escapeHtml(
-        p.authors.length <= 2 ? p.authors.join(" & ") : `${p.authors[0]} et al.`
-      );
-      const safeTitle = escapeHtml(p.title);
-      const safeJournal = escapeHtml(p.journal);
-      const link = p.doi_url || p.oa_url;
-      // Only allow http/https URLs to guard against javascript: or data: URIs
-      const safeLink = link && /^https?:\/\//i.test(link) ? link : null;
-      const tierStyle = tierBadgeStyle(p.match_tier);
-      const tierLabel =
-        p.match_tier === "core" ? "Core"
-        : p.match_tier === "explore" ? "Explore"
-        : p.match_tier === "discovery" ? "Discovery"
-        : "";
+  // Group papers by tier for structured sections
+  const corePapers = papers.filter((p) => p.match_tier === "core");
+  const explorePapers = papers.filter((p) => p.match_tier === "explore");
+  const discoveryPapers = papers.filter((p) => p.match_tier === "discovery");
 
-      return `
-        <tr>
-          <td style="padding:14px 0;border-bottom:1px solid #e5e7eb;vertical-align:top">
-            <table cellpadding="0" cellspacing="0" width="100%">
-              <tr>
-                <td style="font-family:monospace;font-size:13px;color:#6b2737;font-weight:600;padding-right:12px;white-space:nowrap;vertical-align:top;padding-top:3px">
-                  ${p.relevance_score.toFixed(1)}
-                </td>
-                <td>
-                  ${safeLink
-                    ? `<a href="${escapeHtml(safeLink)}" style="font-size:15px;color:#111;font-weight:500;text-decoration:none;line-height:1.4">${safeTitle}</a>`
-                    : `<span style="font-size:15px;color:#111;font-weight:500;line-height:1.4">${safeTitle}</span>`
-                  }
-                  <div style="margin-top:4px;font-family:monospace;font-size:12px;color:#9ca3af">
-                    ${authors} · ${safeJournal}
-                  </div>
-                  ${tierLabel
-                    ? `<span style="display:inline-block;margin-top:6px;padding:2px 6px;font-family:monospace;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;${tierStyle}">${tierLabel}</span>`
-                    : ""
-                  }
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>`;
-    })
-    .join("");
+  const renderPaperRow = (p: ScoredPaper, index: number) => {
+    const authors = escapeHtml(
+      p.authors.length <= 2 ? p.authors.join(" & ") : `${p.authors[0]} et al.`
+    );
+    const safeTitle = escapeHtml(p.title);
+    const safeJournal = escapeHtml(p.journal);
+    const link = p.doi_url || p.oa_url;
+    const safeLink = link && /^https?:\/\//i.test(link) ? link : null;
+
+    return `
+      <tr>
+        <td style="padding:0;vertical-align:top">
+          <table cellpadding="0" cellspacing="0" width="100%" style="border-bottom:1px solid #e8e8e6">
+            <tr>
+              <!-- Index number -->
+              <td style="padding:16px 0 16px 0;width:32px;vertical-align:top;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#a0a0a0;text-align:right;padding-right:14px">
+                ${String(index + 1).padStart(2, "0")}
+              </td>
+              <!-- Score -->
+              <td style="padding:16px 0;width:36px;vertical-align:top;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6b2737;font-weight:600;letter-spacing:-0.02em">
+                ${p.relevance_score.toFixed(1)}
+              </td>
+              <!-- Content -->
+              <td style="padding:16px 0">
+                ${safeLink
+                  ? `<a href="${escapeHtml(safeLink)}" style="font-family:'Source Serif 4',Georgia,serif;font-size:15px;color:#1a1a1a;font-weight:500;text-decoration:none;line-height:1.45;letter-spacing:-0.01em">${safeTitle}</a>`
+                  : `<span style="font-family:'Source Serif 4',Georgia,serif;font-size:15px;color:#1a1a1a;font-weight:500;line-height:1.45;letter-spacing:-0.01em">${safeTitle}</span>`
+                }
+                <div style="margin-top:5px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#a0a0a0;line-height:1.4">
+                  ${authors}
+                </div>
+                <div style="margin-top:2px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#c0c0be">
+                  ${safeJournal}${p.is_open_access ? ` · <span style="color:#2d6a4f">open access</span>` : ""}
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`;
+  };
+
+  const renderSection = (title: string, sectionPapers: ScoredPaper[], color: string, startIndex: number) => {
+    if (!sectionPapers.length) return "";
+    return `
+      <tr>
+        <td style="padding:24px 32px 0 32px">
+          <table cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="padding-bottom:12px;border-bottom:2px solid ${color}">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:${color};font-weight:600">${title}</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a0a0a0;margin-left:8px">${sectionPapers.length}</span>
+              </td>
+            </tr>
+            ${sectionPapers.slice(0, 15).map((p, i) => renderPaperRow(p, startIndex + i)).join("")}
+          </table>
+        </td>
+      </tr>`;
+  };
+
+  // Interests list for the profile summary
+  const interests = profile.interests?.length
+    ? profile.interests.slice(0, 4).map(i => escapeHtml(i)).join(" · ")
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -137,52 +160,101 @@ export function generateDigestHtml(data: DigestEmailData): string {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>verso — reading list for ${safeRecipientName}</title>
 </head>
-<body style="margin:0;padding:0;background:#fafaf8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-  <table cellpadding="0" cellspacing="0" width="100%" style="background:#fafaf8;padding:32px 16px">
-    <tr><td>
-      <table cellpadding="0" cellspacing="0" width="100%" style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #e5e7eb">
+<body style="margin:0;padding:0;background:#f5f5f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <table cellpadding="0" cellspacing="0" width="100%" style="background:#f5f5f3;padding:40px 16px">
+    <tr><td align="center">
+      <table cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:0 auto">
 
-        <!-- Header -->
+        <!-- Masthead -->
         <tr>
-          <td style="padding:24px 28px;border-bottom:1px solid #e5e7eb">
-            <span style="font-family:Georgia,serif;font-size:22px;letter-spacing:-0.02em;color:#1a1a1a">verso</span>
-            <div style="margin-top:6px;font-family:monospace;font-size:11px;color:#a0a0a0">
-              ${date} · ${days}-day window
-            </div>
+          <td style="padding:0 0 24px 0">
+            <span style="font-family:Georgia,'Source Serif 4',serif;font-size:24px;letter-spacing:-0.03em;color:#1a1a1a;font-weight:400">verso</span>
           </td>
         </tr>
 
-        <!-- Intro -->
+        <!-- Main card -->
         <tr>
-          <td style="padding:20px 28px;border-bottom:1px solid #e5e7eb">
-            <p style="margin:0;font-size:15px;color:#374151;line-height:1.6">
-              Hi ${safeRecipientName}, here is your curated reading list for <strong>${fieldLabel}</strong>.
-            </p>
-            <div style="margin-top:12px;font-family:monospace;font-size:11px;color:#a0a0a0">
-              ${papers.length} papers &nbsp;·&nbsp;
-              <span style="color:#065f46">${coreCount} core</span> &nbsp;·&nbsp;
-              <span style="color:#701a75">${exploreCount} explore</span> &nbsp;·&nbsp;
-              <span style="color:#713f12">${discoverCount} discovery</span>
-            </div>
-          </td>
-        </tr>
+          <td>
+            <table cellpadding="0" cellspacing="0" width="100%" style="background:#ffffff;border:1px solid #e2e2e0">
 
-        <!-- Papers -->
-        <tr>
-          <td style="padding:0 28px">
-            <table cellpadding="0" cellspacing="0" width="100%">
-              ${paperRows}
+              <!-- Date bar -->
+              <tr>
+                <td style="padding:20px 32px;border-bottom:1px solid #e2e2e0">
+                  <table cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      <td style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#a0a0a0">
+                        ${date}
+                      </td>
+                      <td align="right" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#a0a0a0">
+                        ${days}-day window
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Greeting -->
+              <tr>
+                <td style="padding:28px 32px 0 32px">
+                  <p style="margin:0;font-family:'IBM Plex Sans',-apple-system,sans-serif;font-size:15px;color:#333;line-height:1.65">
+                    Hi ${safeRecipientName}, here are ${papers.length} papers curated for your work in <strong style="color:#1a1a1a">${fieldLabel}</strong>.
+                  </p>
+                  ${interests ? `
+                  <p style="margin:8px 0 0 0;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#a0a0a0;line-height:1.5">
+                    ${interests}
+                  </p>` : ""}
+                </td>
+              </tr>
+
+              <!-- Stats row -->
+              <tr>
+                <td style="padding:16px 32px 0 32px">
+                  <table cellpadding="0" cellspacing="0" style="border:1px solid #e2e2e0;width:100%">
+                    <tr>
+                      <td style="padding:12px 16px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;border-right:1px solid #e2e2e0">
+                        <div style="color:#1a1a1a;font-weight:600;font-size:16px;letter-spacing:-0.02em">${papers.length}</div>
+                        <div style="color:#a0a0a0;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;margin-top:2px">papers</div>
+                      </td>
+                      <td style="padding:12px 16px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;border-right:1px solid #e2e2e0">
+                        <div style="color:#2d6a4f;font-weight:600;font-size:16px;letter-spacing:-0.02em">${coreCount}</div>
+                        <div style="color:#a0a0a0;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;margin-top:2px">core</div>
+                      </td>
+                      <td style="padding:12px 16px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;border-right:1px solid #e2e2e0">
+                        <div style="color:#6b2737;font-weight:600;font-size:16px;letter-spacing:-0.02em">${exploreCount}</div>
+                        <div style="color:#a0a0a0;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;margin-top:2px">explore</div>
+                      </td>
+                      <td style="padding:12px 16px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px">
+                        <div style="color:#8b6914;font-weight:600;font-size:16px;letter-spacing:-0.02em">${discoverCount}</div>
+                        <div style="color:#a0a0a0;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;margin-top:2px">discovery</div>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Paper sections -->
+              ${renderSection("Core", corePapers, "#2d6a4f", 0)}
+              ${renderSection("Explore", explorePapers, "#6b2737", corePapers.length)}
+              ${renderSection("Discovery", discoveryPapers, "#8b6914", corePapers.length + explorePapers.length)}
+
+              <!-- Spacer before footer -->
+              <tr><td style="height:28px"></td></tr>
+
             </table>
           </td>
         </tr>
 
         <!-- Footer -->
         <tr>
-          <td style="padding:20px 28px;border-top:1px solid #e5e7eb">
-            <p style="margin:0;font-family:monospace;font-size:11px;color:#a0a0a0;line-height:1.6">
-              Sent by <a href="https://verso-nextjs.vercel.app" style="color:#6b2737;text-decoration:none">verso</a>
-              · recent research, surfaced for you
-            </p>
+          <td style="padding:20px 0">
+            <table cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a0a0a0;line-height:1.6">
+                  <a href="https://verso-nextjs.vercel.app" style="color:#6b2737;text-decoration:none;font-family:Georgia,serif;font-size:12px;letter-spacing:-0.02em">verso</a>
+                  &nbsp;·&nbsp; recent research, surfaced for you
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>
 
